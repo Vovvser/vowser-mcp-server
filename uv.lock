@@ -882,6 +882,7 @@ dependencies = [
     { name = "langchain-google-genai" },
     { name = "langchain-neo4j" },
     { name = "langchain-openai" },
+    { name = "numpy" },
     { name = "python-dotenv" },
 ]
 
@@ -891,6 +892,7 @@ requires-dist = [
     { name = "langchain-google-genai", specifier = ">=2.1.8" },
     { name = "langchain-neo4j", specifier = ">=0.4.0" },
     { name = "langchain-openai", specifier = ">=0.3.28" },
+    { name = "numpy", specifier = ">=2.3.1" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
 ]
 
