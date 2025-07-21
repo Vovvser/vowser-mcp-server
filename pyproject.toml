@@ -3,12 +3,14 @@ name = "vowser-mcp-server"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11, <3.12"
+requires-python = ">=3.12, <3.13"
 dependencies = [
+    "beautifulsoup4>=4.13.4",
     "langchain>=0.3.26",
     "langchain-google-genai>=2.1.8",
     "langchain-neo4j>=0.4.0",
     "langchain-openai>=0.3.28",
     "numpy>=2.3.1",
+    "playwright>=1.53.0",
     "python-dotenv>=1.1.1",
 ]
