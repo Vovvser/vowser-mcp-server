@@ -128,6 +128,9 @@ def save_path_to_neo4j(path_data):
                 p.domain = $domain,
                 p.primarySelector = $primarySelector,
                 p.fallbackSelectors = $fallbackSelectors,
+                p.anchorPoint = $anchorPoint,
+                p.relativePathFromAnchor = $relativePathFromAnchor,
+                p.elementSnapshot = $elementSnapshot,
                 p.textLabels = $textLabels,
                 p.contextText = $contextText,
                 p.actionType = $actionType,
@@ -141,6 +144,9 @@ def save_path_to_neo4j(path_data):
                 'domain': current_domain,
                 'primarySelector': step['locationData']['primarySelector'],
                 'fallbackSelectors': step['locationData']['fallbackSelectors'],
+                'anchorPoint': step['locationData'].get('anchorPoint', ''),
+                'relativePathFromAnchor': step['locationData'].get('relativePathFromAnchor', ''),
+                'elementSnapshot': json.dumps(step['locationData'].get('elementSnapshot', {})),
                 'textLabels': step['semanticData']['textLabels'],
                 'contextText': json.dumps(step['semanticData']['contextText']),
                 'actionType': step['semanticData']['actionType'],
@@ -167,7 +173,9 @@ def save_path_to_neo4j(path_data):
                     MATCH (r:ROOT {domain: $domain})
                     MATCH (p:PAGE {pageId: $pageId})
                     MERGE (r)-[rel:HAS_PAGE]->(p)
-                    SET rel.weight = coalesce(rel.weight, 0) + 1
+                    SET rel.weight = coalesce(rel.weight, 0) + 1,
+                        rel.createdAt = coalesce(rel.createdAt, datetime()),
+                        rel.lastUpdated = datetime()
                     """
                     graph.query(connect_to_root, {
                         'domain': current_domain,
@@ -179,7 +187,9 @@ def save_path_to_neo4j(path_data):
                         MATCH (p1:PAGE {pageId: $prevId})
                         MATCH (p2:PAGE {pageId: $currId})
                         MERGE (p1)-[rel:NAVIGATES_TO_CROSS_DOMAIN]->(p2)
-                        SET rel.weight = coalesce(rel.weight, 0) + 1
+                        SET rel.weight = coalesce(rel.weight, 0) + 1,
+                            rel.createdAt = coalesce(rel.createdAt, datetime()),
+                            rel.lastUpdated = datetime()
                         """
                         graph.query(cross_connect, {
                             'prevId': previous_node_id,
@@ -191,7 +201,9 @@ def save_path_to_neo4j(path_data):
                     MATCH (p1:PAGE {pageId: $prevId})
                     MATCH (p2:PAGE {pageId: $currId})
                     MERGE (p1)-[rel:NAVIGATES_TO]->(p2)
-                    SET rel.weight = coalesce(rel.weight, 0) + 1
+                    SET rel.weight = coalesce(rel.weight, 0) + 1,
+                        rel.createdAt = coalesce(rel.createdAt, datetime()),
+                        rel.lastUpdated = datetime()
                     """
                     graph.query(connect_pages, {
                         'prevId': previous_node_id,
@@ -207,6 +219,12 @@ def save_path_to_neo4j(path_data):
             print(f"ROOT: {current_domain} (클릭 요소 없음)")
 
         previous_domain = current_domain
+
+    # PATH 엔티티 생성
+    if path_json:
+        path_id = create_path_entity(path_json)
+        if path_id:
+            print(f"PATH 엔티티 생성됨: {path_id}")
 
     print("\n경로 저장 완료!")
     return {"status": "success", "saved_steps": len(clicks)}
@@ -259,7 +277,9 @@ def save_page_analysis_to_neo4j(url: str, page_structure):
             MATCH (r:ROOT {domain: $domain})
             MATCH (pa:PAGE_ANALYSIS {analysisId: $analysisId})
             MERGE (r)-[rel:HAS_ANALYSIS]->(pa)
-            SET rel.weight = coalesce(rel.weight, 0) + 1
+            SET rel.weight = coalesce(rel.weight, 0) + 1,
+                rel.createdAt = coalesce(rel.createdAt, datetime()),
+                rel.lastUpdated = datetime()
             """,
             {'domain': domain, 'analysisId': analysis_id}
         )
@@ -565,3 +585,469 @@ def run_overlap_test(test_cases: list = None):
     except Exception as e:
         print(f"테스트 결과 분석 실패: {e}")
         return None
+
+
+# PATH 엔티티 관련 함수들 추가
+
+def create_path_entity(path_json):
+    """
+    경로 저장 후 PATH 엔티티 생성
+    """
+    if not graph:
+        raise ConnectionError("Neo4j database is not connected.")
+    
+    try:
+        # 경로의 모든 노드 정보를 결합하여 설명 생성
+        clicks = [step for step in path_json['completePath'] if step['order'] > 0]
+        if not clicks:
+            return None
+            
+        # 노드 시퀀스 생성
+        node_sequence = ["root_" + extract_domain(clicks[0]['url'])]
+        descriptions = []
+        
+        for step in clicks:
+            if 'locationData' in step and 'semanticData' in step:
+                page_id = create_page_id(step['url'], step['locationData'])
+                node_sequence.append("page_" + page_id)
+                
+                # 텍스트 라벨로 설명 생성
+                labels = step['semanticData'].get('textLabels', [])
+                if labels:
+                    descriptions.append(labels[0])
+        
+        # PATH 설명 생성
+        path_description = " → ".join(descriptions)
+        
+        # 전체 경로의 임베딩 생성
+        full_text = path_json.get('startCommand', '') + " " + path_description
+        path_embedding = generate_embedding(full_text)
+        
+        # PATH ID 생성
+        path_id = "path_" + hashlib.md5("_".join(node_sequence).encode()).hexdigest()
+        
+        # PATH 엔티티 생성
+        create_path_query = """
+        MERGE (path:PATH {pathId: $pathId})
+        SET path.description = $description,
+            path.nodeSequence = $nodeSequence,
+            path.startDomain = $startDomain,
+            path.targetPageId = $targetPageId,
+            path.embedding = $embedding,
+            path.totalWeight = coalesce(path.totalWeight, 0) + 1,
+            path.usageCount = coalesce(path.usageCount, 0) + 1,
+            path.createdAt = coalesce(path.createdAt, datetime()),
+            path.lastUsed = datetime(),
+            path.lastUpdated = datetime()
+        RETURN path
+        """
+        
+        path_params = {
+            'pathId': path_id,
+            'description': path_description,
+            'nodeSequence': node_sequence,
+            'startDomain': extract_domain(clicks[0]['url']),
+            'targetPageId': node_sequence[-1] if node_sequence else None,
+            'embedding': path_embedding
+        }
+        
+        result = graph.query(create_path_query, path_params)
+        
+        # PATH와 PAGE 노드 연결
+        if len(node_sequence) > 1:  # ROOT 제외하고 PAGE들만
+            page_ids = [nid.replace("page_", "") for nid in node_sequence[1:]]
+            connect_query = """
+            MATCH (path:PATH {pathId: $pathId})
+            MATCH (p:PAGE) WHERE p.pageId IN $pageIds
+            MERGE (path)-[:CONTAINS]->(p)
+            """
+            graph.query(connect_query, {'pathId': path_id, 'pageIds': page_ids})
+        
+        print(f"PATH 엔티티 생성: {path_description}")
+        return path_id
+        
+    except Exception as e:
+        print(f"PATH 엔티티 생성 실패: {e}")
+        return None
+
+
+def search_paths_by_query(query_text, limit=3, domain_hint=None):
+    """
+    자연어 쿼리로 관련 경로 검색
+    """
+    print(f"[DEBUG] search_paths_by_query 시작: {query_text}")
+    
+    if not graph:
+        print("[DEBUG] Neo4j 연결 없음")
+        raise ConnectionError("Neo4j database is not connected.")
+    
+    import time
+    start_time = time.time()
+    
+    try:
+        # 쿼리 임베딩 생성
+        print(f"[DEBUG] 임베딩 생성 중...")
+        query_embedding = generate_embedding(query_text)
+        if not query_embedding:
+            print("[DEBUG] 임베딩 생성 실패")
+            return None
+        print(f"[DEBUG] 임베딩 생성 성공: 차원 {len(query_embedding)}")
+        
+        # 도메인 힌트 처리
+        domain_filter = ""
+        if domain_hint:
+            domain_filter = f"AND path.startDomain = '{domain_hint}'"
+        elif "유튜브" in query_text or "youtube" in query_text.lower():
+            domain_filter = "AND path.startDomain = 'youtube.com'"
+        
+        # 1. PATH 엔티티에서 벡터 검색 (Python에서 코사인 유사도 계산)
+        path_search_query = f"""
+        MATCH (path:PATH)
+        WHERE path.embedding IS NOT NULL {domain_filter}
+        RETURN path
+        """
+        
+        print(f"[DEBUG] PATH 검색 쿼리 실행 중...")
+        all_paths = graph.query(path_search_query)
+        print(f"[DEBUG] 찾은 PATH 수: {len(all_paths)}")
+        
+        # Python에서 코사인 유사도 계산
+        import numpy as np
+        
+        def cosine_similarity(vec1, vec2):
+            vec1 = np.array(vec1)
+            vec2 = np.array(vec2)
+            return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+        
+        path_results = []
+        for path_data in all_paths:
+            path = path_data['path']
+            if path.get('embedding'):
+                similarity = cosine_similarity(query_embedding, path['embedding'])
+                print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 유사도 {similarity:.3f}")
+                if similarity > 0.5:  # 임계값을 0.7에서 0.5로 낮춤
+                    path_results.append({
+                        'path': path,
+                        'similarity': similarity
+                    })
+        
+        # 유사도 순으로 정렬
+        path_results = sorted(path_results, key=lambda x: x['similarity'], reverse=True)[:limit]
+        print(f"[DEBUG] 0.7 이상 PATH 수: {len(path_results)}")
+        
+        # 2. PATH가 없으면 PAGE 노드에서 검색
+        if not path_results:
+            print("PATH 검색 결과 없음, PAGE 노드에서 검색")
+            page_search_query = f"""
+            MATCH (page:PAGE)
+            WHERE page.embedding IS NOT NULL
+            WITH page, gds.similarity.cosine(page.embedding, $queryEmbedding) as similarity
+            WHERE similarity > 0.7
+            ORDER BY similarity DESC
+            LIMIT 5
+            """
+            
+            page_results = graph.query(page_search_query, {
+                'queryEmbedding': query_embedding
+            })
+            
+            if page_results:
+                # 찾은 PAGE를 포함하는 경로 구성
+                path_results = []
+                for page_result in page_results:
+                    page = page_result['page']
+                    # 해당 PAGE까지의 경로 찾기
+                    path_query = """
+                    MATCH path = (root:ROOT)-[:HAS_PAGE|NAVIGATES_TO*]->(target:PAGE {pageId: $pageId})
+                    RETURN path, $similarity as similarity
+                    LIMIT 1
+                    """
+                    paths = graph.query(path_query, {
+                        'pageId': page['pageId'],
+                        'similarity': page_result['similarity']
+                    })
+                    if paths:
+                        path_results.extend(paths)
+        
+        # 3. 결과 포맷팅
+        matched_paths = []
+        for result in path_results[:limit]:
+            if 'path' in result and hasattr(result['path'], 'nodes'):
+                # 경로에서 노드 추출
+                nodes = result['path'].nodes
+                steps = []
+                
+                for i, node in enumerate(nodes):
+                    if 'domain' in node and 'baseURL' in node:  # ROOT 노드
+                        steps.append({
+                            'order': i,
+                            'type': 'ROOT',
+                            'domain': node['domain'],
+                            'url': node.get('baseURL', f"https://{node['domain']}"),
+                            'action': f"{node['domain']} 접속"
+                        })
+                    elif 'pageId' in node:  # PAGE 노드
+                        action = f"{node.get('textLabels', ['작업'])[0]} 클릭"
+                        steps.append({
+                            'order': i,
+                            'type': 'PAGE',
+                            'pageId': node['pageId'],
+                            'url': node.get('url', ''),
+                            'selector': node.get('primarySelector', ''),
+                            'anchorPoint': node.get('anchorPoint', ''),
+                            'action': action,
+                            'textLabels': node.get('textLabels', [])
+                        })
+                
+                if steps:
+                    # 시간 감쇠 계산
+                    time_decay = 1.0
+                    if 'lastUsed' in result.get('path', {}):
+                        days_old = (datetime.now() - result['path']['lastUsed']).days
+                        time_decay = max(0.5, 1.0 - (days_old / 30) * 0.5)
+                    
+                    # 최종 점수 계산
+                    total_weight = result.get('path', {}).get('totalWeight', 1)
+                    relevance_score = (
+                        result['similarity'] * 0.5 +
+                        min(total_weight / 100, 1.0) * 0.3 +
+                        time_decay * 0.2
+                    )
+                    
+                    matched_paths.append({
+                        'pathId': result.get('path', {}).get('pathId', 'unknown'),
+                        'relevance_score': round(relevance_score, 3),
+                        'total_weight': total_weight,
+                        'last_used': result.get('path', {}).get('lastUsed'),
+                        'estimated_time': result.get('path', {}).get('avgExecutionTime'),
+                        'steps': steps
+                    })
+            elif 'path' in result:
+                # PATH 엔티티에서 직접 가져온 경우
+                path_entity = result['path']
+                # 노드 시퀀스로부터 경로 재구성
+                steps = reconstruct_path_from_sequence(path_entity['nodeSequence'])
+                
+                if steps:
+                    matched_paths.append({
+                        'pathId': path_entity['pathId'],
+                        'relevance_score': round(result['similarity'], 3),
+                        'total_weight': path_entity.get('totalWeight', 1),
+                        'last_used': path_entity.get('lastUsed'),
+                        'estimated_time': path_entity.get('avgExecutionTime'),
+                        'steps': steps
+                    })
+        
+        search_time_ms = int((time.time() - start_time) * 1000)
+        
+        return {
+            'query': query_text,
+            'matched_paths': matched_paths,
+            'search_metadata': {
+                'total_found': len(matched_paths),
+                'search_time_ms': search_time_ms,
+                'vector_search_used': True,
+                'min_score_threshold': 0.7
+            }
+        }
+        
+    except Exception as e:
+        print(f"경로 검색 실패: {e}")
+        return None
+
+
+def reconstruct_path_from_sequence(node_sequence):
+    """
+    노드 시퀀스로부터 경로 재구성
+    """
+    if not graph or not node_sequence:
+        return []
+    
+    steps = []
+    for i, node_id in enumerate(node_sequence):
+        if node_id.startswith("root_"):
+            domain = node_id.replace("root_", "")
+            steps.append({
+                'order': i,
+                'type': 'ROOT',
+                'domain': domain,
+                'url': f"https://{domain}",
+                'action': f"{domain} 접속"
+            })
+        elif node_id.startswith("page_"):
+            page_id = node_id.replace("page_", "")
+            # PAGE 노드 정보 조회
+            page_query = """
+            MATCH (p:PAGE {pageId: $pageId})
+            RETURN p
+            """
+            page_results = graph.query(page_query, {'pageId': page_id})
+            
+            if page_results:
+                page = page_results[0]['p']
+                action = f"{page.get('textLabels', ['작업'])[0]} 클릭"
+                steps.append({
+                    'order': i,
+                    'type': 'PAGE',
+                    'pageId': page_id,
+                    'url': page.get('url', ''),
+                    'selector': page.get('primarySelector', ''),
+                    'anchorPoint': page.get('anchorPoint', ''),
+                    'action': action,
+                    'textLabels': page.get('textLabels', [])
+                })
+    
+    return steps
+
+
+def update_path_usage(path_id):
+    """
+    경로 사용 시 가중치 업데이트
+    """
+    if not graph:
+        return
+    
+    try:
+        # PATH 엔티티 업데이트
+        update_path_query = """
+        MATCH (path:PATH {pathId: $pathId})
+        SET path.totalWeight = path.totalWeight + 1,
+            path.usageCount = path.usageCount + 1,
+            path.lastUsed = datetime()
+        """
+        graph.query(update_path_query, {'pathId': path_id})
+        
+        # 경로상의 모든 관계 업데이트
+        update_relations_query = """
+        MATCH (path:PATH {pathId: $pathId})-[:CONTAINS]->(page:PAGE)
+        MATCH paths = (:ROOT)-[rels:HAS_PAGE|NAVIGATES_TO*]->(page)
+        FOREACH (rel IN rels |
+            SET rel.weight = coalesce(rel.weight, 0) + 1,
+                rel.lastUpdated = datetime()
+        )
+        """
+        graph.query(update_relations_query, {'pathId': path_id})
+        
+        print(f"경로 사용 추적 완료: {path_id}")
+        
+    except Exception as e:
+        print(f"경로 사용 추적 실패: {e}")
+
+
+def cleanup_old_paths():
+    """
+    30일 이상 미사용 경로 정리
+    """
+    if not graph:
+        return
+    
+    try:
+        # 1. 30일 이상 미사용 PATH weight 감소
+        decay_query = """
+        MATCH (path:PATH)
+        WHERE path.lastUsed < datetime() - duration('P30D')
+        SET path.totalWeight = CASE 
+            WHEN path.totalWeight > 0 THEN path.totalWeight - 1
+            ELSE 0
+        END
+        RETURN count(path) as decayed_count
+        """
+        decay_result = graph.query(decay_query)
+        
+        # 2. weight가 0인 PATH 삭제
+        delete_paths_query = """
+        MATCH (path:PATH)
+        WHERE path.totalWeight <= 0
+        WITH path, path.pathId as pathId
+        DETACH DELETE path
+        RETURN count(pathId) as deleted_paths
+        """
+        delete_result = graph.query(delete_paths_query)
+        
+        # 3. weight가 0인 관계 삭제
+        delete_relations_query = """
+        MATCH ()-[rel:HAS_PAGE|NAVIGATES_TO|NAVIGATES_TO_CROSS_DOMAIN]->()
+        WHERE rel.weight <= 0
+        DELETE rel
+        RETURN count(rel) as deleted_relations
+        """
+        rel_result = graph.query(delete_relations_query)
+        
+        # 4. 고립된 PAGE 노드 삭제
+        cleanup_pages_query = """
+        MATCH (page:PAGE)
+        WHERE NOT (page)<-[:HAS_PAGE|NAVIGATES_TO]-()
+          AND NOT (page)-[:NAVIGATES_TO]->()
+          AND NOT (:PATH)-[:CONTAINS]->(page)
+        DELETE page
+        RETURN count(page) as deleted_pages
+        """
+        page_result = graph.query(cleanup_pages_query)
+        
+        print(f"정리 완료:")
+        print(f"  - 가중치 감소: {decay_result[0]['decayed_count']}개 경로")
+        print(f"  - 삭제된 PATH: {delete_result[0]['deleted_paths']}개")
+        print(f"  - 삭제된 관계: {rel_result[0]['deleted_relations']}개")
+        print(f"  - 삭제된 PAGE: {page_result[0]['deleted_pages']}개")
+        
+        return {
+            'decayed_paths': decay_result[0]['decayed_count'],
+            'deleted_paths': delete_result[0]['deleted_paths'],
+            'deleted_relations': rel_result[0]['deleted_relations'],
+            'deleted_pages': page_result[0]['deleted_pages']
+        }
+        
+    except Exception as e:
+        print(f"경로 정리 실패: {e}")
+        return None
+
+
+def create_vector_indexes():
+    """
+    벡터 인덱스 생성
+    """
+    if not graph:
+        return
+    
+    try:
+        # PAGE 노드 벡터 인덱스
+        page_index_query = """
+        CREATE VECTOR INDEX page_embedding IF NOT EXISTS
+        FOR (p:PAGE) ON (p.embedding)
+        OPTIONS {indexConfig: {
+            `vector.dimensions`: 1536,
+            `vector.similarity_function`: 'cosine'
+        }}
+        """
+        graph.query(page_index_query)
+        print("PAGE 벡터 인덱스 생성 완료")
+        
+        # PATH 노드 벡터 인덱스
+        path_index_query = """
+        CREATE VECTOR INDEX path_embedding IF NOT EXISTS
+        FOR (p:PATH) ON (p.embedding)
+        OPTIONS {indexConfig: {
+            `vector.dimensions`: 1536,
+            `vector.similarity_function`: 'cosine'
+        }}
+        """
+        graph.query(path_index_query)
+        print("PATH 벡터 인덱스 생성 완료")
+        
+        # 전문 검색 인덱스
+        text_indexes = [
+            """CREATE FULLTEXT INDEX page_text_search IF NOT EXISTS
+               FOR (p:PAGE) ON EACH [p.textLabels]""",
+            """CREATE FULLTEXT INDEX path_description_search IF NOT EXISTS
+               FOR (p:PATH) ON EACH [p.description]"""
+        ]
+        
+        for index_query in text_indexes:
+            graph.query(index_query)
+        print("전문 검색 인덱스 생성 완료")
+        
+        return True
+        
+    except Exception as e:
+        print(f"인덱스 생성 실패: {e}")
+        return False

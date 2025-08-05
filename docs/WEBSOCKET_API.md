@@ -215,6 +215,114 @@
 }
 ```
 
+### 5. search_path - 자연어 경로 검색
+
+사용자의 자연어 질의를 받아 관련된 웹 탐색 경로를 검색합니다.
+
+**요청:**
+```json
+{
+  "type": "search_path",
+  "data": {
+    "query": "유튜브에서 좋아요 한 음악 재생목록 여는 방법",
+    "limit": 3,
+    "domain_hint": "youtube.com"  // 선택적
+  }
+}
+```
+
+**응답:**
+```json
+{
+  "type": "search_path_result",
+  "status": "success",
+  "data": {
+    "query": "유튜브에서 좋아요 한 음악 재생목록 여는 방법",
+    "matched_paths": [
+      {
+        "pathId": "path_abc123",
+        "relevance_score": 0.92,
+        "total_weight": 15,
+        "last_used": "2025-01-05T10:30:00",
+        "estimated_time": 12.5,
+        "steps": [
+          {
+            "order": 0,
+            "type": "ROOT",
+            "domain": "youtube.com",
+            "url": "https://youtube.com",
+            "action": "youtube.com 접속"
+          },
+          {
+            "order": 1,
+            "type": "PAGE",
+            "pageId": "page_123",
+            "url": "https://youtube.com",
+            "selector": "button[aria-label='라이브러리']",
+            "anchorPoint": "#guide-renderer",
+            "action": "라이브러리 클릭",
+            "textLabels": ["라이브러리", "Library"]
+          }
+        ]
+      }
+    ],
+    "search_metadata": {
+      "total_found": 1,
+      "search_time_ms": 145,
+      "vector_search_used": true,
+      "min_score_threshold": 0.5
+    }
+  }
+}
+```
+
+### 6. create_indexes - 벡터 인덱스 생성
+
+Neo4j에 벡터 검색을 위한 인덱스를 생성합니다.
+
+**요청:**
+```json
+{
+  "type": "create_indexes"
+}
+```
+
+**응답:**
+```json
+{
+  "type": "index_creation_result",
+  "status": "success",
+  "data": {
+    "message": "인덱스 생성 완료"
+  }
+}
+```
+
+### 7. cleanup_paths - 오래된 경로 정리
+
+30일 이상 사용되지 않은 경로의 가중치를 감소시키고, 가중치가 0인 경로를 삭제합니다.
+
+**요청:**
+```json
+{
+  "type": "cleanup_paths"
+}
+```
+
+**응답:**
+```json
+{
+  "type": "cleanup_result",
+  "status": "success",
+  "data": {
+    "decayed_paths": 5,
+    "deleted_paths": 2,
+    "deleted_relations": 10,
+    "deleted_pages": 3
+  }
+}
+```
+
 ## 에러 처리
 
 **에러 응답:**

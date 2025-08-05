@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv, find_dotenv
 from app.services import neo4j_service
-from app.models.path import PathData
+from app.models.path import PathData, SearchPathRequest
 
 load_dotenv(find_dotenv())
 
@@ -83,6 +83,60 @@ async def websocket_endpoint(websocket: WebSocket):
                         "data": {
                             "domain": domain,
                             "popular_paths": popular
+                        }
+                    }
+                
+                elif message['type'] == 'search_path':
+                    # 자연어 경로 검색
+                    search_request = SearchPathRequest(**message['data'])
+                    print(f"경로 검색 요청: {search_request.query}")
+                    
+                    search_result = neo4j_service.search_paths_by_query(
+                        search_request.query,
+                        search_request.limit,
+                        search_request.domain_hint
+                    )
+                    
+                    if search_result:
+                        # 검색된 경로들의 사용 추적
+                        for path in search_result.get('matched_paths', []):
+                            if path.get('pathId') and path['pathId'] != 'unknown':
+                                neo4j_service.update_path_usage(path['pathId'])
+                        
+                        response = {
+                            "type": "search_path_result",
+                            "status": "success",
+                            "data": search_result
+                        }
+                    else:
+                        response = {
+                            "type": "search_path_result",
+                            "status": "error",
+                            "data": {
+                                "message": "경로 검색 실패",
+                                "query": search_request.query
+                            }
+                        }
+                
+                elif message['type'] == 'cleanup_paths':
+                    # 시간 기반 경로 정리
+                    cleanup_result = neo4j_service.cleanup_old_paths()
+                    
+                    response = {
+                        "type": "cleanup_result",
+                        "status": "success",
+                        "data": cleanup_result or {"message": "정리 실패"}
+                    }
+                
+                elif message['type'] == 'create_indexes':
+                    # 벡터 인덱스 생성
+                    index_result = neo4j_service.create_vector_indexes()
+                    
+                    response = {
+                        "type": "index_creation_result",
+                        "status": "success" if index_result else "error",
+                        "data": {
+                            "message": "인덱스 생성 완료" if index_result else "인덱스 생성 실패"
                         }
                     }
                 
