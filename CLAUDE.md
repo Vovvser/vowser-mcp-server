@@ -56,14 +56,15 @@ jupyter notebook test.ipynb
 
 **FastAPI WebSocket Server** (`app/main.py`):
 - Single WebSocket endpoint at `/ws` for real-time communication
-- Handles multiple message types: `save_path`, `check_graph`, `visualize_paths`, `find_popular_paths`
+- Handles multiple message types: `save_path`, `check_graph`, `visualize_paths`, `find_popular_paths`, `search_path`, `create_indexes`, `cleanup_paths`
 - JSON-based message protocol with structured request/response format
 
 **Neo4j Graph Database** (`app/services/neo4j_service.py`):
 - Stores web navigation paths as graph structures
-- Node types: ROOT (domains), PAGE (clickable elements), PAGE_ANALYSIS, SECTION, ELEMENT
-- Relationship types: HAS_PAGE, NAVIGATES_TO, NAVIGATES_TO_CROSS_DOMAIN
+- Node types: ROOT (domains), PAGE (clickable elements), PATH (complete navigation paths), PAGE_ANALYSIS, SECTION, ELEMENT
+- Relationship types: HAS_PAGE, NAVIGATES_TO, NAVIGATES_TO_CROSS_DOMAIN, CONTAINS (PATH→PAGE)
 - Weighted relationships track usage frequency and popularity
+- Vector embeddings enable semantic search for natural language queries
 
 **AI Services** (`app/services/`):
 - `embedding_service.py`: Generates semantic embeddings for UI elements
@@ -86,8 +87,14 @@ jupyter notebook test.ipynb
 
 - **ROOT**: Domain-level nodes (e.g., youtube.com)
 - **PAGE**: Interactive elements with selectors, text labels, and embeddings
-- **Relationships**: Weighted connections tracking user navigation patterns
-- **Cross-domain navigation**: Special relationship type for domain transitions
+- **PATH**: Complete navigation sequences with embeddings for semantic search
+- **Relationships**: 
+  - HAS_PAGE: ROOT→PAGE connections
+  - NAVIGATES_TO: PAGE→PAGE navigation flow
+  - NAVIGATES_TO_CROSS_DOMAIN: Cross-domain transitions
+  - CONTAINS: PATH→PAGE membership
+- **Time tracking**: All relationships include createdAt and lastUpdated timestamps
+- **Weight system**: Usage frequency tracking for popularity analysis
 
 ## Environment Variables
 
@@ -111,10 +118,13 @@ The server expects JSON messages with this structure:
 ```
 
 Supported message types:
-- `save_path`: Store user navigation sequences
+- `save_path`: Store user navigation sequences (automatically creates PATH entities)
 - `check_graph`: Get graph statistics
 - `visualize_paths`: Query domain-specific paths
 - `find_popular_paths`: Get weighted popular navigation routes
+- `search_path`: Natural language path search with vector embeddings
+- `create_indexes`: Create vector and text search indexes in Neo4j
+- `cleanup_paths`: Clean up old unused paths (30+ days)
 
 Detailed API documentation: `docs/WEBSOCKET_API.md`
 
