@@ -35,6 +35,7 @@ class SearchPathRequest(BaseModel):
 class PathStepResponse(BaseModel):
     order: int
     type: str  # ROOT or PAGE
+    title: str
     pageId: Optional[str] = None
     domain: Optional[str] = None
     url: str

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv, find_dotenv
@@ -160,7 +161,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
                 }
             
-            await websocket.send_text(json.dumps(response))
+            # DateTime 객체를 직렬화 가능하도록 변환하는 커스텀 인코더
+            def json_serializer(obj):
+                if hasattr(obj, 'isoformat'):
+                    return obj.isoformat()
+                elif hasattr(obj, 'to_native'):
+                    return obj.to_native().isoformat()
+                raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+            
+            await websocket.send_text(json.dumps(response, default=json_serializer, ensure_ascii=False))
             print(f"응답 전송 완료: {response['type']}")
             
     except WebSocketDisconnect:

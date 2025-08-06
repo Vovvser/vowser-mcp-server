@@ -870,6 +870,7 @@ def reconstruct_path_from_sequence(node_sequence):
             steps.append({
                 'order': i,
                 'type': 'ROOT',
+                'title': f"{domain} 메인",
                 'domain': domain,
                 'url': f"https://{domain}",
                 'action': f"{domain} 접속"
@@ -886,9 +887,11 @@ def reconstruct_path_from_sequence(node_sequence):
             if page_results:
                 page = page_results[0]['p']
                 action = f"{page.get('textLabels', ['작업'])[0]} 클릭"
+                title = page.get('textLabels', [''])[0] if page.get('textLabels') else action.replace(' 클릭', '')
                 steps.append({
                     'order': i,
                     'type': 'PAGE',
+                    'title': title,
                     'pageId': page_id,
                     'url': page.get('url', ''),
                     'selector': page.get('primarySelector', ''),
