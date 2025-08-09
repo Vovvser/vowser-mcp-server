@@ -743,41 +743,73 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
                 return 0.0
         
         path_results = []
-        for path_data in all_paths:
+        for i, path_data in enumerate(all_paths):
             try:
+                print(f"[DEBUG] PATH[{i}] 데이터 구조: {type(path_data)}, 키: {path_data.keys() if hasattr(path_data, 'keys') else 'N/A'}")
+                
                 path = path_data['path']
-                if path.get('embedding') and path['embedding'] is not None:
-                    similarity = cosine_similarity(query_embedding, path['embedding'])
-                    print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 유사도 {similarity:.3f}")
-                    if similarity > 0.5:  # 임계값을 0.7에서 0.5로 낮춤
+                print(f"[DEBUG] PATH[{i}] 객체 타입: {type(path)}")
+                
+                # Node 객체 속성 접근 방식 시도
+                path_id = getattr(path, 'pathId', None) or path.get('pathId', 'unknown') if hasattr(path, 'get') else 'unknown'
+                embedding = getattr(path, 'embedding', None) or path.get('embedding', None) if hasattr(path, 'get') else None
+                
+                print(f"[DEBUG] PATH[{i}] pathId: {path_id}")
+                print(f"[DEBUG] PATH[{i}] embedding: {type(embedding)}, 길이: {len(embedding) if embedding else 0}")
+                
+                if embedding and len(embedding) > 0:
+                    similarity = cosine_similarity(query_embedding, embedding)
+                    print(f"[DEBUG] PATH {path_id}: 유사도 {similarity:.3f}")
+                    if similarity > 0.1:  # 임계값을 더 낮춤 (테스트용)
                         path_results.append({
                             'path': path,
                             'similarity': similarity
                         })
                 else:
-                    print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 임베딩 없음")
+                    print(f"[DEBUG] PATH {path_id}: 임베딩 없음")
             except Exception as e:
-                print(f"[DEBUG] PATH 처리 오류: {e}")
+                print(f"[DEBUG] PATH[{i}] 처리 오류: {e}")
+                import traceback
+                traceback.print_exc()
         
         # 유사도 순으로 정렬
         path_results = sorted(path_results, key=lambda x: x['similarity'], reverse=True)[:limit]
-        print(f"[DEBUG] 0.7 이상 PATH 수: {len(path_results)}")
+        print(f"[DEBUG] 0.1 이상 PATH 수: {len(path_results)}")
         
         # 2. PATH가 없으면 PAGE 노드에서 검색
         if not path_results:
-            print("PATH 검색 결과 없음, PAGE 노드에서 검색")
+            print("[DEBUG] PATH 검색 결과 없음, PAGE 노드에서 검색")
             page_search_query = f"""
             MATCH (page:PAGE)
             WHERE page.embedding IS NOT NULL
-            WITH page, gds.similarity.cosine(page.embedding, $queryEmbedding) as similarity
-            WHERE similarity > 0.7
-            ORDER BY similarity DESC
-            LIMIT 5
+            RETURN page
             """
             
-            page_results = graph.query(page_search_query, {
-                'queryEmbedding': query_embedding
-            })
+            print("[DEBUG] PAGE 검색 쿼리 실행 중...")
+            all_pages = graph.query(page_search_query)
+            print(f"[DEBUG] 찾은 PAGE 수: {len(all_pages)}")
+            
+            # Python에서 코사인 유사도 계산
+            page_results = []
+            for page_data in all_pages:
+                try:
+                    page = page_data['page']
+                    if page.get('embedding') and page['embedding'] is not None:
+                        similarity = cosine_similarity(query_embedding, page['embedding'])
+                        print(f"[DEBUG] PAGE {page.get('pageId', 'unknown')}: 유사도 {similarity:.3f}")
+                        if similarity > 0.1:  # 임계값을 더 낮춤 (테스트용)
+                            page_results.append({
+                                'page': page,
+                                'similarity': similarity
+                            })
+                    else:
+                        print(f"[DEBUG] PAGE {page.get('pageId', 'unknown')}: 임베딩 없음")
+                except Exception as e:
+                    print(f"[DEBUG] PAGE 처리 오류: {e}")
+            
+            # 유사도 순으로 정렬
+            page_results = sorted(page_results, key=lambda x: x['similarity'], reverse=True)[:5]
+            print(f"[DEBUG] 0.1 이상 PAGE 수: {len(page_results)}")
             
             if page_results:
                 # 찾은 PAGE를 포함하는 경로 구성
