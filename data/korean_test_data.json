@@ -1,0 +1,628 @@
+[
+  {
+    "sessionId": "naver_webtoon_001",
+    "startCommand": "네이버 웹툰에서 월요웹툰 외모지상주의 최신화 보기",
+    "completePath": [
+      {
+        "order": 0,
+        "url": "https://comic.naver.com",
+        "locationData": null,
+        "semanticData": null
+      },
+      {
+        "order": 1,
+        "url": "https://comic.naver.com",
+        "locationData": {
+          "primarySelector": "a.Nbtn_webtoon",
+          "fallbackSelectors": ["a[href*='webtoon']", "nav a:contains('웹툰')"],
+          "anchorPoint": "#header",
+          "relativePathFromAnchor": "a.Nbtn_webtoon",
+          "elementSnapshot": {"tagName": "a", "attributes": {"class": "Nbtn_webtoon"}}
+        },
+        "semanticData": {
+          "textLabels": ["웹툰", "WEBTOON"],
+          "contextText": {
+            "immediate": "네비게이션",
+            "section": "헤더",
+            "neighbor": ["홈", "웹소설", "베스트도전"]
+          },
+          "pageInfo": {"title": "네이버 웹툰", "url": "https://comic.naver.com"},
+          "actionType": "click"
+        }
+      },
+      {
+        "order": 2,
+        "url": "https://comic.naver.com/webtoon",
+        "locationData": {
+          "primarySelector": "li.day_mon a",
+          "fallbackSelectors": ["li[class*='mon'] a", "a:contains('월요웹툰')"],
+          "anchorPoint": "#weekdayList",
+          "relativePathFromAnchor": "li.day_mon a",
+          "elementSnapshot": {"tagName": "a", "attributes": {"class": "day_link"}}
+        },
+        "semanticData": {
+          "textLabels": ["월요웹툰", "월"],
+          "contextText": {
+            "immediate": "요일별 웹툰",
+            "section": "웹툰 목록",
+            "neighbor": ["일", "화", "수", "목", "금", "토"]
+          },
+          "pageInfo": {"title": "요일별 웹툰 - 네이버 웹툰", "url": "https://comic.naver.com/webtoon"},
+          "actionType": "click"
+        }
+      },
+      {
+        "order": 3,
+        "url": "https://comic.naver.com/webtoon/weekday/mon",
+        "locationData": {
+          "primarySelector": "div.thumb a[title='외모지상주의']",
+          "fallbackSelectors": ["a[href*='lookism']", "img[alt='외모지상주의']"],
+          "anchorPoint": "#content",
+          "relativePathFromAnchor": "div.thumb a[title='외모지상주의']",
+          "elementSnapshot": {"tagName": "a", "attributes": {"title": "외모지상주의"}}
+        },
+        "semanticData": {
+          "textLabels": ["외모지상주의", "박태준"],
+          "contextText": {
+            "immediate": "월요웹툰",
+            "section": "웹툰 리스트",
+            "neighbor": ["별점 9.9", "업데이트"]
+          },
+          "pageInfo": {"title": "월요웹툰 - 네이버 웹툰", "url": "https://comic.naver.com/webtoon/weekday/mon"},
+          "actionType": "click"
+        }
+      },
+      {
+        "order": 4,
+        "url": "https://comic.naver.com/webtoon/list?titleId=641253",
+        "locationData": {
+          "primarySelector": "button.btn_episode",
+          "fallbackSelectors": ["a.EpisodeListList__link--latest", "td.title a:first"],
+          "anchorPoint": "#content",
+          "relativePathFromAnchor": "button.btn_episode",
+          "elementSnapshot": {"tagName": "button", "attributes": {"class": "btn_episode"}}
+        },
+        "semanticData": {
+          "textLabels": ["최신화 보기", "460화"],
+          "contextText": {
+            "immediate": "에피소드 목록",
+            "section": "웹툰 상세",
+            "neighbor": ["이전화", "다음화", "댓글"]
+          },
+          "pageInfo": {"title": "외모지상주의 - 네이버 웹툰", "url": "https://comic.naver.com/webtoon/list?titleId=641253"},
+          "actionType": "click"
+        }
+      }
+    ]
+  },
+  {
+    "sessionId": "naver_webtoon_002",
+        {
+          "description": "웹툰 검색 → 장르별 → 로맨스 웹툰",
+          "rootDomain": "https://comic.naver.com",
+          "path": [
+            {"selector": "input.search_input", "text": "검색창", "position": {"x": 500, "y": 50}},
+            {"selector": "a.genre_romance", "text": "로맨스", "position": {"x": 300, "y": 150}},
+            {"selector": "div.thumb a[title='여신강림']", "text": "여신강림", "position": {"x": 250, "y": 350}},
+            {"selector": "button.btn_favorite", "text": "관심웹툰 등록", "position": {"x": 450, "y": 450}}
+          ]
+        },
+        {
+          "description": "베스트도전 → 신인 작가 웹툰",
+          "rootDomain": "https://comic.naver.com",
+          "path": [
+            {"selector": "a.Nbtn_upload", "text": "베스트도전", "position": {"x": 200, "y": 50}},
+            {"selector": "li.genre_daily", "text": "일상", "position": {"x": 150, "y": 200}},
+            {"selector": "div.challengeList a", "text": "일상툰 1위", "position": {"x": 300, "y": 350}},
+            {"selector": "button.btn_subscribe", "text": "구독하기", "position": {"x": 400, "y": 450}}
+          ]
+        },
+        {
+          "description": "완결웹툰 → 명작 다시보기",
+          "rootDomain": "https://comic.naver.com",
+          "path": [
+            {"selector": "a.Nbtn_finish", "text": "완결웹툰", "position": {"x": 300, "y": 50}},
+            {"selector": "select.sortType", "text": "별점순", "position": {"x": 400, "y": 150}},
+            {"selector": "div.thumb a[title='신의 탑']", "text": "신의 탑", "position": {"x": 200, "y": 300}},
+            {"selector": "a.btn_first_episode", "text": "1화부터", "position": {"x": 350, "y": 400}}
+          ]
+        },
+        {
+          "description": "웹툰 → 댓글 → 베스트 댓글",
+          "rootDomain": "https://comic.naver.com",
+          "path": [
+            {"selector": "div.thumb a[title='참교육']", "text": "참교육", "position": {"x": 200, "y": 250}},
+            {"selector": "a.btn_latest", "text": "최신화", "position": {"x": 300, "y": 350}},
+            {"selector": "button.btn_comment", "text": "댓글", "position": {"x": 400, "y": 500}},
+            {"selector": "button.sort_best", "text": "베스트댓글", "position": {"x": 450, "y": 550}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "쿠팡",
+      "paths": [
+        {
+          "description": "메인 → 로켓배송 → 식품 카테고리",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "a.rocket-delivery", "text": "로켓배송", "position": {"x": 150, "y": 100}},
+            {"selector": "a[data-category='food']", "text": "식품", "position": {"x": 200, "y": 200}},
+            {"selector": "div.product-item a", "text": "농심 신라면 20개입", "position": {"x": 300, "y": 400}},
+            {"selector": "button.buy-now", "text": "바로구매", "position": {"x": 500, "y": 500}}
+          ]
+        },
+        {
+          "description": "검색 → 가전제품 → 필터링 → 구매",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "input#searchInput", "text": "에어프라이어", "position": {"x": 400, "y": 50}},
+            {"selector": "button.search-btn", "text": "검색", "position": {"x": 550, "y": 50}},
+            {"selector": "input[name='price-range']", "text": "5만원~10만원", "position": {"x": 100, "y": 200}},
+            {"selector": "label.rocket-fresh", "text": "로켓프레시", "position": {"x": 100, "y": 250}},
+            {"selector": "div.product a[data-rank='1']", "text": "필립스 에어프라이어", "position": {"x": 300, "y": 350}},
+            {"selector": "button.add-to-cart", "text": "장바구니 담기", "position": {"x": 500, "y": 450}}
+          ]
+        },
+        {
+          "description": "골드박스 → 타임특가 → 즉시구매",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "a.goldbox-link", "text": "골드박스", "position": {"x": 250, "y": 100}},
+            {"selector": "div.time-deal", "text": "타임특가", "position": {"x": 200, "y": 200}},
+            {"selector": "div.deal-item[data-idx='0']", "text": "삼성 갤럭시버즈", "position": {"x": 300, "y": 300}},
+            {"selector": "button.buy-immediately", "text": "즉시구매", "position": {"x": 450, "y": 400}}
+          ]
+        },
+        {
+          "description": "로켓프레시 → 신선식품 → 새벽배송",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "a.rocket-fresh", "text": "로켓프레시", "position": {"x": 200, "y": 100}},
+            {"selector": "a[data-category='vegetable']", "text": "채소", "position": {"x": 150, "y": 200}},
+            {"selector": "div.product a", "text": "친환경 상추 1kg", "position": {"x": 300, "y": 350}},
+            {"selector": "button.dawn-delivery", "text": "새벽배송 선택", "position": {"x": 400, "y": 450}},
+            {"selector": "button.checkout", "text": "구매하기", "position": {"x": 500, "y": 550}}
+          ]
+        },
+        {
+          "description": "베스트 → 카테고리별 → 리뷰 확인 → 구매",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "a.best-products", "text": "베스트", "position": {"x": 300, "y": 100}},
+            {"selector": "select.category", "text": "뷰티", "position": {"x": 200, "y": 200}},
+            {"selector": "div.rank-1 a", "text": "AHC 선크림", "position": {"x": 300, "y": 300}},
+            {"selector": "tab.reviews", "text": "상품평(1,234)", "position": {"x": 400, "y": 400}},
+            {"selector": "button.add-cart", "text": "장바구니", "position": {"x": 500, "y": 500}}
+          ]
+        },
+        {
+          "description": "멤버십 → 와우회원 특가",
+          "rootDomain": "https://www.coupang.com",
+          "path": [
+            {"selector": "a.wow-membership", "text": "와우회원", "position": {"x": 400, "y": 50}},
+            {"selector": "div.wow-deal", "text": "와우특가", "position": {"x": 200, "y": 200}},
+            {"selector": "div.product-wow a", "text": "LG 그램 노트북", "position": {"x": 300, "y": 350}},
+            {"selector": "button.wow-price", "text": "와우가격 적용", "position": {"x": 450, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "나무위키",
+      "paths": [
+        {
+          "description": "메인 → 인기 문서 → 관련 문서",
+          "rootDomain": "https://namu.wiki",
+          "path": [
+            {"selector": "a.popular-docs", "text": "인기 문서", "position": {"x": 200, "y": 100}},
+            {"selector": "ol.popular-list a[data-rank='1']", "text": "2024년 한국 대중문화", "position": {"x": 300, "y": 200}},
+            {"selector": "div.wiki-heading a", "text": "K-POP", "position": {"x": 250, "y": 350}},
+            {"selector": "a.wiki-link", "text": "뉴진스", "position": {"x": 400, "y": 450}}
+          ]
+        },
+        {
+          "description": "검색 → 문서 → 목차 → 하위 문서",
+          "rootDomain": "https://namu.wiki",
+          "path": [
+            {"selector": "input.search-input", "text": "이순신", "position": {"x": 400, "y": 50}},
+            {"selector": "button.search", "text": "검색", "position": {"x": 500, "y": 50}},
+            {"selector": "div.search-result a", "text": "이순신", "position": {"x": 300, "y": 200}},
+            {"selector": "div.toc a[href='#s-2']", "text": "2. 생애", "position": {"x": 150, "y": 300}},
+            {"selector": "a.wiki-link", "text": "임진왜란", "position": {"x": 350, "y": 400}}
+          ]
+        },
+        {
+          "description": "최근 변경 → 토론 → 역사",
+          "rootDomain": "https://namu.wiki",
+          "path": [
+            {"selector": "a.recent-changes", "text": "최근 변경", "position": {"x": 300, "y": 100}},
+            {"selector": "tr.recent-item a", "text": "손흥민", "position": {"x": 350, "y": 250}},
+            {"selector": "a.discuss", "text": "토론", "position": {"x": 450, "y": 150}},
+            {"selector": "a.history", "text": "역사", "position": {"x": 500, "y": 150}}
+          ]
+        },
+        {
+          "description": "랜덤문서 → 관련항목 탐색",
+          "rootDomain": "https://namu.wiki",
+          "path": [
+            {"selector": "a.random-page", "text": "랜덤문서", "position": {"x": 400, "y": 100}},
+            {"selector": "div.wiki-heading", "text": "문서 제목", "position": {"x": 300, "y": 200}},
+            {"selector": "div.wiki-paragraph a", "text": "관련 링크", "position": {"x": 350, "y": 350}},
+            {"selector": "a.category-link", "text": "분류:한국사", "position": {"x": 200, "y": 500}}
+          ]
+        },
+        {
+          "description": "분류 탐색 → 하위 문서",
+          "rootDomain": "https://namu.wiki",
+          "path": [
+            {"selector": "a.category", "text": "분류", "position": {"x": 500, "y": 100}},
+            {"selector": "a[href*='분류:게임']", "text": "분류:게임", "position": {"x": 300, "y": 200}},
+            {"selector": "div.category-item a", "text": "리그 오브 레전드", "position": {"x": 350, "y": 350}},
+            {"selector": "div.toc a", "text": "챔피언 목록", "position": {"x": 200, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "네이버",
+      "paths": [
+        {
+          "description": "네이버 메인 → 뉴스 → 스포츠",
+          "rootDomain": "https://www.naver.com",
+          "path": [
+            {"selector": "a.nav-news", "text": "뉴스", "position": {"x": 200, "y": 100}},
+            {"selector": "a.sports", "text": "스포츠", "position": {"x": 150, "y": 200}},
+            {"selector": "div.headline a", "text": "손흥민 해트트릭", "position": {"x": 350, "y": 300}},
+            {"selector": "button.comment", "text": "댓글 보기", "position": {"x": 450, "y": 500}}
+          ]
+        },
+        {
+          "description": "네이버 쇼핑 → 라이브커머스",
+          "rootDomain": "https://shopping.naver.com",
+          "path": [
+            {"selector": "a.shopping-home", "text": "쇼핑홈", "position": {"x": 100, "y": 50}},
+            {"selector": "a.shopping-live", "text": "쇼핑라이브", "position": {"x": 250, "y": 150}},
+            {"selector": "div.live-item", "text": "실시간 방송", "position": {"x": 300, "y": 300}},
+            {"selector": "button.buy-live", "text": "라이브 구매", "position": {"x": 450, "y": 400}}
+          ]
+        },
+        {
+          "description": "네이버 지도 → 맛집 검색",
+          "rootDomain": "https://map.naver.com",
+          "path": [
+            {"selector": "input.search-box", "text": "강남역 맛집", "position": {"x": 400, "y": 50}},
+            {"selector": "button.search", "text": "검색", "position": {"x": 500, "y": 50}},
+            {"selector": "div.place-item[data-rank='1']", "text": "1위 맛집", "position": {"x": 300, "y": 250}},
+            {"selector": "button.reservation", "text": "예약하기", "position": {"x": 450, "y": 400}}
+          ]
+        },
+        {
+          "description": "네이버 카페 → 가입 → 글쓰기",
+          "rootDomain": "https://cafe.naver.com",
+          "path": [
+            {"selector": "input.cafe-search", "text": "맘카페", "position": {"x": 400, "y": 50}},
+            {"selector": "div.cafe-item a", "text": "강남맘카페", "position": {"x": 300, "y": 200}},
+            {"selector": "button.join-cafe", "text": "카페 가입", "position": {"x": 450, "y": 300}},
+            {"selector": "a.write-post", "text": "글쓰기", "position": {"x": 500, "y": 400}}
+          ]
+        },
+        {
+          "description": "네이버 블로그 → 이웃추가",
+          "rootDomain": "https://blog.naver.com",
+          "path": [
+            {"selector": "input.blog-search", "text": "여행 블로그", "position": {"x": 400, "y": 50}},
+            {"selector": "div.blog-post a", "text": "제주도 여행기", "position": {"x": 300, "y": 200}},
+            {"selector": "button.add-neighbor", "text": "이웃추가", "position": {"x": 450, "y": 150}},
+            {"selector": "button.like", "text": "공감", "position": {"x": 400, "y": 500}}
+          ]
+        },
+        {
+          "description": "네이버페이 → 포인트 → 결제",
+          "rootDomain": "https://pay.naver.com",
+          "path": [
+            {"selector": "a.naverpay", "text": "네이버페이", "position": {"x": 400, "y": 50}},
+            {"selector": "div.point-section", "text": "포인트", "position": {"x": 200, "y": 200}},
+            {"selector": "button.charge", "text": "충전하기", "position": {"x": 350, "y": 300}},
+            {"selector": "button.pay", "text": "결제하기", "position": {"x": 450, "y": 400}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "유튜브 한국",
+      "paths": [
+        {
+          "description": "유튜브 → 인기 급상승 → K-POP",
+          "rootDomain": "https://www.youtube.com",
+          "path": [
+            {"selector": "a#trending", "text": "인기 급상승", "position": {"x": 100, "y": 200}},
+            {"selector": "div.chip-bar yt-chip", "text": "음악", "position": {"x": 300, "y": 150}},
+            {"selector": "ytd-video-renderer a[title*='뉴진스']", "text": "뉴진스 신곡 MV", "position": {"x": 400, "y": 300}},
+            {"selector": "button#subscribe", "text": "구독", "position": {"x": 500, "y": 400}}
+          ]
+        },
+        {
+          "description": "먹방 유튜버 → 라이브 스트리밍",
+          "rootDomain": "https://www.youtube.com",
+          "path": [
+            {"selector": "input#search", "text": "쯔양 먹방", "position": {"x": 400, "y": 50}},
+            {"selector": "button#search-icon", "text": "검색", "position": {"x": 550, "y": 50}},
+            {"selector": "ytd-channel-renderer", "text": "쯔양 채널", "position": {"x": 300, "y": 200}},
+            {"selector": "paper-tab.live", "text": "라이브", "position": {"x": 400, "y": 250}},
+            {"selector": "button.ytp-live-badge", "text": "실시간 스트리밍", "position": {"x": 450, "y": 350}}
+          ]
+        },
+        {
+          "description": "게임 스트리밍 → 클립 → 댓글",
+          "rootDomain": "https://www.youtube.com",
+          "path": [
+            {"selector": "a#gaming", "text": "게임", "position": {"x": 100, "y": 250}},
+            {"selector": "yt-chip", "text": "리그오브레전드", "position": {"x": 300, "y": 150}},
+            {"selector": "ytd-video-renderer a[title*='T1']", "text": "T1 경기 하이라이트", "position": {"x": 400, "y": 300}},
+            {"selector": "button.clip", "text": "클립 만들기", "position": {"x": 450, "y": 450}},
+            {"selector": "ytd-comments", "text": "댓글", "position": {"x": 300, "y": 600}}
+          ]
+        },
+        {
+          "description": "교육 콘텐츠 → 재생목록 저장",
+          "rootDomain": "https://www.youtube.com",
+          "path": [
+            {"selector": "input#search", "text": "수학 인강", "position": {"x": 400, "y": 50}},
+            {"selector": "ytd-video-renderer a", "text": "수학의 정석 강의", "position": {"x": 350, "y": 250}},
+            {"selector": "button.save", "text": "저장", "position": {"x": 500, "y": 450}},
+            {"selector": "tp-yt-paper-checkbox", "text": "나중에 볼 동영상", "position": {"x": 400, "y": 500}}
+          ]
+        },
+        {
+          "description": "뷰티 유튜버 → 제품 링크",
+          "rootDomain": "https://www.youtube.com",
+          "path": [
+            {"selector": "input#search", "text": "회사원A 메이크업", "position": {"x": 400, "y": 50}},
+            {"selector": "ytd-channel-renderer", "text": "회사원A", "position": {"x": 300, "y": 200}},
+            {"selector": "paper-tab", "text": "동영상", "position": {"x": 300, "y": 250}},
+            {"selector": "ytd-grid-video-renderer a", "text": "데일리 메이크업", "position": {"x": 350, "y": 350}},
+            {"selector": "ytd-expander", "text": "더보기", "position": {"x": 400, "y": 500}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "인스타그램",
+      "paths": [
+        {
+          "description": "인스타그램 → 릴스 → 저장",
+          "rootDomain": "https://www.instagram.com",
+          "path": [
+            {"selector": "a[href='/reels/']", "text": "릴스", "position": {"x": 200, "y": 100}},
+            {"selector": "div.reel-item", "text": "인기 릴스", "position": {"x": 300, "y": 300}},
+            {"selector": "svg[aria-label='좋아요']", "text": "좋아요", "position": {"x": 350, "y": 450}},
+            {"selector": "svg[aria-label='저장']", "text": "저장", "position": {"x": 450, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "카카오톡",
+      "paths": [
+        {
+          "description": "카카오톡 오픈채팅 → 참여",
+          "rootDomain": "https://open.kakao.com",
+          "path": [
+            {"selector": "input.search", "text": "주식 오픈채팅", "position": {"x": 400, "y": 50}},
+            {"selector": "div.openchat-item", "text": "주식 초보 모임", "position": {"x": 300, "y": 200}},
+            {"selector": "button.join", "text": "참여하기", "position": {"x": 450, "y": 300}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "다음",
+      "paths": [
+        {
+          "description": "다음 뉴스 → 실시간 이슈",
+          "rootDomain": "https://www.daum.net",
+          "path": [
+            {"selector": "a.link_news", "text": "뉴스", "position": {"x": 200, "y": 100}},
+            {"selector": "a.tab_issue", "text": "실시간 이슈", "position": {"x": 300, "y": 200}},
+            {"selector": "ol.list_issue a[data-rank='1']", "text": "1위 뉴스", "position": {"x": 350, "y": 300}},
+            {"selector": "button.btn_comment", "text": "댓글", "position": {"x": 450, "y": 500}}
+          ]
+        },
+        {
+          "description": "다음 카페 → 가입 → 활동",
+          "rootDomain": "https://cafe.daum.net",
+          "path": [
+            {"selector": "input.tf_search", "text": "등산 카페", "position": {"x": 400, "y": 50}},
+            {"selector": "div.cafe_item a", "text": "전국 등산 모임", "position": {"x": 300, "y": 200}},
+            {"selector": "button.btn_join", "text": "카페 가입", "position": {"x": 450, "y": 250}},
+            {"selector": "a.link_write", "text": "글쓰기", "position": {"x": 500, "y": 350}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "트위터",
+      "paths": [
+        {
+          "description": "트위터 → 트렌드 → 리트윗",
+          "rootDomain": "https://twitter.com",
+          "path": [
+            {"selector": "a[href='/explore']", "text": "탐색하기", "position": {"x": 100, "y": 200}},
+            {"selector": "div[aria-label='트렌드']", "text": "대한민국 트렌드", "position": {"x": 800, "y": 200}},
+            {"selector": "div.trend-item[data-rank='1']", "text": "#1 트렌드", "position": {"x": 850, "y": 300}},
+            {"selector": "div[data-testid='retweet']", "text": "리트윗", "position": {"x": 400, "y": 500}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "티스토리",
+      "paths": [
+        {
+          "description": "티스토리 → IT 블로그 → 구독",
+          "rootDomain": "https://www.tistory.com",
+          "path": [
+            {"selector": "a.link_category", "text": "IT", "position": {"x": 200, "y": 100}},
+            {"selector": "div.post_item a", "text": "스프링부트 강좌", "position": {"x": 300, "y": 250}},
+            {"selector": "button.btn_subscribe", "text": "구독하기", "position": {"x": 450, "y": 150}},
+            {"selector": "button.btn_like", "text": "좋아요", "position": {"x": 400, "y": 500}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "11번가",
+      "paths": [
+        {
+          "description": "11번가 → 쇼킹딜 → 구매",
+          "rootDomain": "https://www.11st.co.kr",
+          "path": [
+            {"selector": "a.shocking_deal", "text": "쇼킹딜", "position": {"x": 200, "y": 100}},
+            {"selector": "div.deal_item", "text": "애플워치 특가", "position": {"x": 300, "y": 300}},
+            {"selector": "button.btn_buy", "text": "구매하기", "position": {"x": 450, "y": 400}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "지마켓",
+      "paths": [
+        {
+          "description": "지마켓 → 스마일배송 → 장바구니",
+          "rootDomain": "https://www.gmarket.co.kr",
+          "path": [
+            {"selector": "a.smile_delivery", "text": "스마일배송", "position": {"x": 250, "y": 100}},
+            {"selector": "a[data-category='fashion']", "text": "패션", "position": {"x": 200, "y": 200}},
+            {"selector": "div.item a", "text": "나이키 운동화", "position": {"x": 300, "y": 350}},
+            {"selector": "button.btn_cart", "text": "장바구니", "position": {"x": 450, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "멜론",
+      "paths": [
+        {
+          "description": "멜론 → TOP100 → 플레이리스트 추가",
+          "rootDomain": "https://www.melon.com",
+          "path": [
+            {"selector": "a.menu_chart", "text": "멜론차트", "position": {"x": 200, "y": 100}},
+            {"selector": "a.top100", "text": "TOP100", "position": {"x": 250, "y": 200}},
+            {"selector": "tr[data-rank='1'] a", "text": "1위 곡", "position": {"x": 400, "y": 300}},
+            {"selector": "button.btn_play", "text": "재생", "position": {"x": 500, "y": 350}},
+            {"selector": "button.btn_add_playlist", "text": "플레이리스트 추가", "position": {"x": 550, "y": 350}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "왓챠",
+      "paths": [
+        {
+          "description": "왓챠 → 한국 드라마 → 시청",
+          "rootDomain": "https://watcha.com",
+          "path": [
+            {"selector": "a[href='/browse']", "text": "탐색", "position": {"x": 200, "y": 100}},
+            {"selector": "button.filter_korean", "text": "한국", "position": {"x": 300, "y": 200}},
+            {"selector": "button.filter_drama", "text": "드라마", "position": {"x": 400, "y": 200}},
+            {"selector": "div.content_item a", "text": "이상한 변호사 우영우", "position": {"x": 350, "y": 350}},
+            {"selector": "button.btn_play", "text": "재생", "position": {"x": 450, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "넷플릭스",
+      "paths": [
+        {
+          "description": "넷플릭스 → 한국 콘텐츠 → 내가 찜한 콘텐츠",
+          "rootDomain": "https://www.netflix.com",
+          "path": [
+            {"selector": "a.browse", "text": "둘러보기", "position": {"x": 100, "y": 50}},
+            {"selector": "a[href*='korean']", "text": "한국 콘텐츠", "position": {"x": 200, "y": 150}},
+            {"selector": "div.title-card a", "text": "오징어 게임", "position": {"x": 300, "y": 300}},
+            {"selector": "button.btn_mylist", "text": "내가 찜한 콘텐츠 추가", "position": {"x": 450, "y": 400}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "배달의민족",
+      "paths": [
+        {
+          "description": "배민 → 치킨 → 리뷰 → 주문",
+          "rootDomain": "https://www.baemin.com",
+          "path": [
+            {"selector": "div.category[data-name='치킨']", "text": "치킨", "position": {"x": 200, "y": 200}},
+            {"selector": "button.filter_sort", "text": "별점순", "position": {"x": 400, "y": 150}},
+            {"selector": "div.store_item", "text": "BBQ 치킨", "position": {"x": 300, "y": 300}},
+            {"selector": "tab.reviews", "text": "리뷰", "position": {"x": 350, "y": 400}},
+            {"selector": "button.btn_order", "text": "주문하기", "position": {"x": 450, "y": 500}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "당근마켓",
+      "paths": [
+        {
+          "description": "당근마켓 → 중고거래 → 채팅",
+          "rootDomain": "https://www.daangn.com",
+          "path": [
+            {"selector": "input.search", "text": "아이패드", "position": {"x": 400, "y": 50}},
+            {"selector": "article.item a", "text": "아이패드 프로 11인치", "position": {"x": 300, "y": 250}},
+            {"selector": "button.btn_like", "text": "관심", "position": {"x": 400, "y": 400}},
+            {"selector": "button.btn_chat", "text": "채팅하기", "position": {"x": 500, "y": 400}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "무신사",
+      "paths": [
+        {
+          "description": "무신사 → 브랜드 → 코디 → 구매",
+          "rootDomain": "https://www.musinsa.com",
+          "path": [
+            {"selector": "a.brand", "text": "브랜드", "position": {"x": 200, "y": 100}},
+            {"selector": "a[data-brand='nike']", "text": "나이키", "position": {"x": 300, "y": 250}},
+            {"selector": "a.coordi", "text": "코디", "position": {"x": 400, "y": 150}},
+            {"selector": "div.coordi_item", "text": "스트릿 코디", "position": {"x": 350, "y": 350}},
+            {"selector": "button.btn_buy_all", "text": "전체구매", "position": {"x": 500, "y": 450}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "인터파크",
+      "paths": [
+        {
+          "description": "인터파크 → 도서 → 베스트셀러",
+          "rootDomain": "https://www.interpark.com",
+          "path": [
+            {"selector": "a.menu_book", "text": "도서", "position": {"x": 200, "y": 100}},
+            {"selector": "a.bestseller", "text": "베스트셀러", "position": {"x": 300, "y": 200}},
+            {"selector": "div.rank_1 a", "text": "1위 도서", "position": {"x": 350, "y": 300}},
+            {"selector": "button.btn_cart", "text": "장바구니", "position": {"x": 450, "y": 400}}
+          ]
+        }
+      ]
+    },
+    {
+      "category": "SSG닷컴",
+      "paths": [
+        {
+          "description": "SSG → 새벽배송 → 신선식품",
+          "rootDomain": "https://www.ssg.com",
+          "path": [
+            {"selector": "a.dawn_delivery", "text": "새벽배송", "position": {"x": 250, "y": 100}},
+            {"selector": "a[data-category='fresh']", "text": "신선식품", "position": {"x": 200, "y": 200}},
+            {"selector": "div.product a", "text": "한우 1++", "position": {"x": 350, "y": 350}},
+            {"selector": "button.btn_buy", "text": "구매하기", "position": {"x": 450, "y": 450}}
+          ]
+        }
+      ]
+    }
+  ]
+}
