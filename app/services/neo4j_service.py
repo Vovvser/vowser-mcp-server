@@ -369,14 +369,16 @@ def check_graph_structure():
         return
         
     stats_query = """
-    MATCH (r:ROOT)
-    MATCH (p:PAGE)
+    OPTIONAL MATCH (r:ROOT)
+    OPTIONAL MATCH (p:PAGE)
+    OPTIONAL MATCH (path:PATH)
     OPTIONAL MATCH (r)-[hp:HAS_PAGE]->()
     OPTIONAL MATCH ()-[nt:NAVIGATES_TO]->()
     OPTIONAL MATCH ()-[ntcd:NAVIGATES_TO_CROSS_DOMAIN]->()
     RETURN
         count(DISTINCT r) as root_count,
         count(DISTINCT p) as page_count,
+        count(DISTINCT path) as path_count,
         count(DISTINCT hp) as has_page_count,
         count(DISTINCT nt) as navigates_to_count,
         count(DISTINCT ntcd) as cross_domain_count
@@ -388,6 +390,7 @@ def check_graph_structure():
         for r in result:
             print(f"  - ROOT 노드: {r['root_count']}")
             print(f"  - PAGE 노드: {r['page_count']}")
+            print(f"  - PATH 노드: {r['path_count']}")
             print(f"  - HAS_PAGE 관계: {r['has_page_count']}")
             print(f"  - NAVIGATES_TO 관계: {r['navigates_to_count']}")
             print(f"  - CROSS_DOMAIN 관계: {r['cross_domain_count']}")
@@ -634,6 +637,9 @@ def create_path_entity(path_json):
             path.startDomain = $startDomain,
             path.targetPageId = $targetPageId,
             path.embedding = $embedding,
+            path.startCommand = $startCommand,
+            path.startUrl = $startUrl,
+            path.pathId = $originalPathId,
             path.totalWeight = coalesce(path.totalWeight, 0) + 1,
             path.usageCount = coalesce(path.usageCount, 0) + 1,
             path.createdAt = coalesce(path.createdAt, datetime()),
@@ -648,7 +654,10 @@ def create_path_entity(path_json):
             'nodeSequence': node_sequence,
             'startDomain': extract_domain(clicks[0]['url']),
             'targetPageId': node_sequence[-1] if node_sequence else None,
-            'embedding': path_embedding
+            'embedding': path_embedding,
+            'startCommand': path_json.get('startCommand', ''),
+            'startUrl': clicks[0]['url'] if clicks else '',
+            'originalPathId': path_json.get('metadata', {}).get('pathId', path_id)
         }
         
         result = graph.query(create_path_query, path_params)
@@ -699,6 +708,8 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
             domain_filter = f"AND path.startDomain = '{domain_hint}'"
         elif "유튜브" in query_text or "youtube" in query_text.lower():
             domain_filter = "AND path.startDomain = 'youtube.com'"
+        elif "네이버" in query_text or "naver" in query_text.lower():
+            domain_filter = "AND path.startDomain = 'comic.naver.com'"
         
         # 1. PATH 엔티티에서 벡터 검색 (Python에서 코사인 유사도 계산)
         path_search_query = f"""
@@ -715,21 +726,38 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
         import numpy as np
         
         def cosine_similarity(vec1, vec2):
-            vec1 = np.array(vec1)
-            vec2 = np.array(vec2)
-            return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+            try:
+                vec1 = np.array(vec1)
+                vec2 = np.array(vec2)
+                if vec1.shape != vec2.shape:
+                    print(f"[DEBUG] 임베딩 차원 불일치: {vec1.shape} vs {vec2.shape}")
+                    return 0.0
+                dot_product = np.dot(vec1, vec2)
+                norm1 = np.linalg.norm(vec1)
+                norm2 = np.linalg.norm(vec2)
+                if norm1 == 0 or norm2 == 0:
+                    return 0.0
+                return dot_product / (norm1 * norm2)
+            except Exception as e:
+                print(f"[DEBUG] 코사인 유사도 계산 오류: {e}")
+                return 0.0
         
         path_results = []
         for path_data in all_paths:
-            path = path_data['path']
-            if path.get('embedding'):
-                similarity = cosine_similarity(query_embedding, path['embedding'])
-                print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 유사도 {similarity:.3f}")
-                if similarity > 0.5:  # 임계값을 0.7에서 0.5로 낮춤
-                    path_results.append({
-                        'path': path,
-                        'similarity': similarity
-                    })
+            try:
+                path = path_data['path']
+                if path.get('embedding') and path['embedding'] is not None:
+                    similarity = cosine_similarity(query_embedding, path['embedding'])
+                    print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 유사도 {similarity:.3f}")
+                    if similarity > 0.5:  # 임계값을 0.7에서 0.5로 낮춤
+                        path_results.append({
+                            'path': path,
+                            'similarity': similarity
+                        })
+                else:
+                    print(f"[DEBUG] PATH {path.get('pathId', 'unknown')}: 임베딩 없음")
+            except Exception as e:
+                print(f"[DEBUG] PATH 처리 오류: {e}")
         
         # 유사도 순으로 정렬
         path_results = sorted(path_results, key=lambda x: x['similarity'], reverse=True)[:limit]
@@ -831,6 +859,9 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
                 if steps:
                     matched_paths.append({
                         'pathId': path_entity['pathId'],
+                        'description': path_entity.get('description', ''),
+                        'startCommand': path_entity.get('startCommand', ''),
+                        'startUrl': path_entity.get('startUrl', ''),
                         'relevance_score': round(result['similarity'], 3),
                         'total_weight': path_entity.get('totalWeight', 1),
                         'last_used': path_entity.get('lastUsed'),
@@ -840,14 +871,45 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
         
         search_time_ms = int((time.time() - start_time) * 1000)
         
+        # 응답 형식 맞추기
+        formatted_paths = []
+        for path in matched_paths:
+            formatted_path = {
+                'pathId': path.get('pathId', 'unknown'),
+                'description': path.get('description', ''),
+                'score': path.get('relevance_score', 0),
+                'startCommand': path.get('startCommand', ''),
+                'startUrl': path.get('startUrl', ''),
+                'total_weight': path.get('total_weight', 1),
+                'steps': []
+            }
+            
+            # steps 형식 변환
+            for step in path.get('steps', []):
+                if step['type'] == 'ROOT':
+                    formatted_path['steps'].append({
+                        'title': f"{step['domain']} 메인",
+                        'action': 'navigate',
+                        'url': step['url'],
+                        'selector': ''
+                    })
+                elif step['type'] == 'PAGE':
+                    formatted_path['steps'].append({
+                        'title': step.get('textLabels', [''])[0] if step.get('textLabels') else '페이지',
+                        'action': 'click',
+                        'url': step.get('url', ''),
+                        'selector': step.get('selector', '')
+                    })
+            
+            formatted_paths.append(formatted_path)
+        
         return {
             'query': query_text,
-            'matched_paths': matched_paths,
-            'search_metadata': {
-                'total_found': len(matched_paths),
-                'search_time_ms': search_time_ms,
-                'vector_search_used': True,
-                'min_score_threshold': 0.7
+            'total_matched': len(formatted_paths),
+            'matched_paths': formatted_paths,
+            'performance': {
+                'query_time': search_time_ms,
+                'search_time': search_time_ms
             }
         }
         
