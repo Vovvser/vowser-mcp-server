@@ -32,11 +32,11 @@ def generate_embedding(text: str) -> Optional[List[float]]:
     """
     client = get_openai_client()
     if not client:
-        print("⚠️ 임베딩 생성 건너뜀: OpenAI 클라이언트를 사용할 수 없습니다.")
+        print("Warning: 임베딩 생성 건너뜀: OpenAI 클라이언트를 사용할 수 없습니다.")
         return None
     
     if not text or not text.strip():
-        print("⚠️ 임베딩 생성 건너뜀: 빈 텍스트가 제공되었습니다.")
+        print("Warning: 임베딩 생성 건너뜀: 빈 텍스트가 제공되었습니다.")
         return None
     
     try:
@@ -46,7 +46,7 @@ def generate_embedding(text: str) -> Optional[List[float]]:
         )
         return response.data[0].embedding
     except Exception as e:
-        print(f"❌ 임베딩 생성 실패: {e}")
+        print(f"Error: 임베딩 생성 실패: {e}")
         return None
 
 def create_embedding_text(step: PathStep) -> str:

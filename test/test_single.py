@@ -18,12 +18,12 @@ async def test_single_message(message_type, data):
             }
             
             await websocket.send(json.dumps(message))
-            print(f"📤 요청 전송: {message_type}")
+            print(f"요청 전송: {message_type}")
             
             response = await websocket.recv()
             result = json.loads(response)
             
-            print(f"📨 응답: {result['type']} ({result['status']})")
+            print(f"응답: {result['type']} ({result['status']})")
             
             if result['status'] == 'success':
                 print("성공!")

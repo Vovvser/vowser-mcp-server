@@ -82,7 +82,7 @@ def create_indexes(graph):
             index_name = index.split('CREATE')[1].split('INDEX')[1].split('IF')[0].strip()
             print(f"인덱스 생성: {index_name}")
         except Exception as e:
-            print(f"⚠인덱스 생성 실패: {e}")
+            print(f"Warning: 인덱스 생성 실패: {e}")
 
 def setup_database(reset=False):
     """

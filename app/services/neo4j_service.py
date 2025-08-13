@@ -429,7 +429,7 @@ def visualize_paths(domain: str):
         for r in results:
             if r['depth'] != current_depth:
                 current_depth = r['depth']
-                print(f"\n{'  ' * (current_depth-1)}📍 깊이 {current_depth}:")
+                print(f"\n{'  ' * (current_depth-1)}깊이 {current_depth}:")
             labels = r['labels'] if r['labels'] else ['N/A']
             print(f"{'  ' * current_depth}→ {labels[0]}")
             print(f"{'  ' * current_depth}  URL: {r['url']}")
@@ -684,10 +684,7 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
     """
     자연어 쿼리로 관련 경로 검색
     """
-    print(f"[DEBUG] search_paths_by_query 시작: {query_text}")
-    
     if not graph:
-        print("[DEBUG] Neo4j 연결 없음")
         raise ConnectionError("Neo4j database is not connected.")
     
     import time
@@ -695,12 +692,9 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
     
     try:
         # 쿼리 임베딩 생성
-        print(f"[DEBUG] 임베딩 생성 중...")
         query_embedding = generate_embedding(query_text)
         if not query_embedding:
-            print("[DEBUG] 임베딩 생성 실패")
             return None
-        print(f"[DEBUG] 임베딩 생성 성공: 차원 {len(query_embedding)}")
         
         # 도메인 힌트 처리
         domain_filter = ""
@@ -718,9 +712,7 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
         RETURN path
         """
         
-        print(f"[DEBUG] PATH 검색 쿼리 실행 중...")
         all_paths = graph.query(path_search_query)
-        print(f"[DEBUG] 찾은 PATH 수: {len(all_paths)}")
         
         # Python에서 코사인 유사도 계산
         import numpy as np
@@ -730,7 +722,6 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
                 vec1 = np.array(vec1)
                 vec2 = np.array(vec2)
                 if vec1.shape != vec2.shape:
-                    print(f"[DEBUG] 임베딩 차원 불일치: {vec1.shape} vs {vec2.shape}")
                     return 0.0
                 dot_product = np.dot(vec1, vec2)
                 norm1 = np.linalg.norm(vec1)
@@ -739,55 +730,39 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
                     return 0.0
                 return dot_product / (norm1 * norm2)
             except Exception as e:
-                print(f"[DEBUG] 코사인 유사도 계산 오류: {e}")
                 return 0.0
         
         path_results = []
         for i, path_data in enumerate(all_paths):
             try:
-                print(f"[DEBUG] PATH[{i}] 데이터 구조: {type(path_data)}, 키: {path_data.keys() if hasattr(path_data, 'keys') else 'N/A'}")
-                
                 path = path_data['path']
-                print(f"[DEBUG] PATH[{i}] 객체 타입: {type(path)}")
                 
                 # Node 객체 속성 접근 방식 시도
                 path_id = getattr(path, 'pathId', None) or path.get('pathId', 'unknown') if hasattr(path, 'get') else 'unknown'
                 embedding = getattr(path, 'embedding', None) or path.get('embedding', None) if hasattr(path, 'get') else None
                 
-                print(f"[DEBUG] PATH[{i}] pathId: {path_id}")
-                print(f"[DEBUG] PATH[{i}] embedding: {type(embedding)}, 길이: {len(embedding) if embedding else 0}")
-                
                 if embedding and len(embedding) > 0:
                     similarity = cosine_similarity(query_embedding, embedding)
-                    print(f"[DEBUG] PATH {path_id}: 유사도 {similarity:.3f}")
-                    if similarity > 0.1:  # 임계값을 더 낮춤 (테스트용)
+                    if similarity > 0.1:
                         path_results.append({
                             'path': path,
                             'similarity': similarity
                         })
-                else:
-                    print(f"[DEBUG] PATH {path_id}: 임베딩 없음")
             except Exception as e:
-                print(f"[DEBUG] PATH[{i}] 처리 오류: {e}")
-                import traceback
-                traceback.print_exc()
+                pass
         
         # 유사도 순으로 정렬
         path_results = sorted(path_results, key=lambda x: x['similarity'], reverse=True)[:limit]
-        print(f"[DEBUG] 0.1 이상 PATH 수: {len(path_results)}")
         
         # 2. PATH가 없으면 PAGE 노드에서 검색
         if not path_results:
-            print("[DEBUG] PATH 검색 결과 없음, PAGE 노드에서 검색")
             page_search_query = f"""
             MATCH (page:PAGE)
             WHERE page.embedding IS NOT NULL
             RETURN page
             """
             
-            print("[DEBUG] PAGE 검색 쿼리 실행 중...")
             all_pages = graph.query(page_search_query)
-            print(f"[DEBUG] 찾은 PAGE 수: {len(all_pages)}")
             
             # Python에서 코사인 유사도 계산
             page_results = []
@@ -796,20 +771,16 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
                     page = page_data['page']
                     if page.get('embedding') and page['embedding'] is not None:
                         similarity = cosine_similarity(query_embedding, page['embedding'])
-                        print(f"[DEBUG] PAGE {page.get('pageId', 'unknown')}: 유사도 {similarity:.3f}")
-                        if similarity > 0.1:  # 임계값을 더 낮춤 (테스트용)
+                        if similarity > 0.1:
                             page_results.append({
                                 'page': page,
                                 'similarity': similarity
                             })
-                    else:
-                        print(f"[DEBUG] PAGE {page.get('pageId', 'unknown')}: 임베딩 없음")
                 except Exception as e:
-                    print(f"[DEBUG] PAGE 처리 오류: {e}")
+                    pass
             
             # 유사도 순으로 정렬
             page_results = sorted(page_results, key=lambda x: x['similarity'], reverse=True)[:5]
-            print(f"[DEBUG] 0.1 이상 PAGE 수: {len(page_results)}")
             
             if page_results:
                 # 찾은 PAGE를 포함하는 경로 구성

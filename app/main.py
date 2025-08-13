@@ -89,21 +89,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 elif message['type'] == 'search_path':
                     # 자연어 경로 검색
-                    print(f"[MAIN DEBUG] search_path 메시지 받음")
                     try:
                         search_request = SearchPathRequest(**message['data'])
-                        print(f"[MAIN DEBUG] 경로 검색 요청: {search_request.query}")
                         
                         search_result = neo4j_service.search_paths_by_query(
                             search_request.query,
                             search_request.limit,
                             search_request.domain_hint
                         )
-                        print(f"[MAIN DEBUG] 검색 결과: {search_result}")
                     except Exception as e:
-                        print(f"[MAIN DEBUG] search_path 오류: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        print(f"search_path 오류: {e}")
                         search_result = None
                     
                     if search_result:
