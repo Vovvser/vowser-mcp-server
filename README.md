@@ -1,128 +1,175 @@
-# Advanced Web Crawler
+# Vowser MCP Server
 
-범용적인 웹 크롤러로, 다양한 웹사이트를 크롤링하고 구조화할 수 있습니다.
+FastAPI-based WebSocket server that serves as an MCP (Model Context Protocol) server for web crawling and path analysis. The server integrates with Neo4j for graph-based storage of web navigation paths and uses LangChain for AI-powered content analysis.
 
-## 주요 기능
+## Features
 
-- **범용 웹 크롤링**: 모든 웹사이트에 적용 가능한 설정 기반 크롤러
-- **동적 콘텐츠 처리**: JavaScript 렌더링, 스크롤, 더보기 버튼 처리
-- **설정 파일 지원**: JSON 기반 설정으로 사이트별 커스터마이징
-- **LLM 기반 카테고리화**: Gemini를 사용한 자동 URL 분류
-- **깊이 제한 크롤링**: 효율적인 리소스 관리
+- **WebSocket Communication**: Real-time bidirectional communication via WebSocket
+- **Neo4j Graph Database**: Stores web navigation paths as graph structures
+- **AI-Powered Analysis**: LangChain integration for semantic content analysis
+- **Path Search**: Natural language search for navigation paths using vector embeddings
+- **Popular Path Tracking**: Usage-based path recommendations with weighted relationships
 
-## 설치
+## Quick Start
 
+### Environment Setup
 ```bash
-# 의존성 설치
+# Install dependencies (recommended)
+uv sync
+
+# Alternative: pip install
 pip install -r requirements.txt
-
-# 또는 poetry 사용
-poetry install
 ```
 
-## 사용법
+### Configuration
+Create a `.env` file:
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_password
+GOOGLE_API_KEY=your_gemini_api_key
+OPENAI_API_KEY=your_openai_key
+```
 
-### 기본 사용법
-
+### Running the Server
 ```bash
-# 기본 설정으로 크롤링
-python prototype_advanced.py https://example.com
+# Start the FastAPI server
+uvicorn app.main:app --port 8000 --reload
 
-# 깊이와 페이지 수 지정
-python prototype_advanced.py https://example.com -d 3 -p 100
+# Alternative: using Python module
+python -m uvicorn app.main:app --port 8000 --reload
 ```
 
-### 설정 파일 사용
-
+### Testing
 ```bash
-# 네이버 크롤링
-python prototype_advanced.py https://www.naver.com -c configs/naver.json
+# Run comprehensive WebSocket tests
+cd test/
+python test_single.py
 
-# 구글 크롤링
-python prototype_advanced.py https://www.google.com -c configs/google.json
-
-# 커스텀 설정
-python prototype_advanced.py https://mysite.com -c myconfig.json
+# Expected output: "전체 결과: 5/5 성공"
 ```
 
-### 명령줄 옵션
+## API Documentation
 
-- `url`: 크롤링할 대상 URL (필수)
-- `-c, --config`: 설정 파일 경로 (JSON)
-- `-d, --depth`: 최대 크롤링 깊이 (기본값: 2)
-- `-p, --pages`: 최대 크롤링 페이지 수 (기본값: 50)
+### WebSocket Connection
+- **URL**: `ws://localhost:8000/ws`
+- **Protocol**: JSON-based message exchange
 
-## 설정 파일 구조
+### Supported Message Types
 
+#### 1. Save Navigation Path
 ```json
 {
-  "allowed_domains": ["example.com"],
-  "start_urls": ["https://example.com"],
-  "max_depth": 2,
-  "max_pages": 50,
-  "dynamic_content": {
-    "scroll_count": 3,
-    "scroll_delay": 1500,
-    "expandable_selectors": [
-      "button[class*=\"more\"]",
-      ".load-more"
-    ]
-  },
-  "url_extraction": {
-    "include_external": false,
-    "patterns": [],
-    "exclude_patterns": ["login", "logout"]
-  },
-  "categorization": {
-    "rules": [
-      {"pattern": "blog", "category": "Blog"},
-      {"pattern": "news", "category": "News"}
-    ],
-    "llm_prompt_template": null
+  "type": "save_path",
+  "data": {
+    "sessionId": "session-123",
+    "startCommand": "유튜브에서 음악 찾기",
+    "completePath": [...]
   }
 }
 ```
 
-### 설정 옵션 설명
-
-- **allowed_domains**: 크롤링할 도메인 목록
-- **start_urls**: 시작 URL 목록
-- **max_depth**: 최대 크롤링 깊이
-- **max_pages**: 최대 크롤링 페이지 수
-- **dynamic_content**: 동적 콘텐츠 처리 설정
-  - **scroll_count**: 스크롤 횟수
-  - **scroll_delay**: 스크롤 간격 (ms)
-  - **expandable_selectors**: 클릭할 확장 버튼 셀렉터
-- **url_extraction**: URL 추출 설정
-  - **include_external**: 외부 링크 포함 여부
-  - **patterns**: 포함할 URL 패턴
-  - **exclude_patterns**: 제외할 URL 패턴
-- **categorization**: 카테고리화 설정
-  - **rules**: URL 패턴 기반 카테고리 규칙
-  - **llm_prompt_template**: 커스텀 LLM 프롬프트
-
-## 예제 설정 파일
-
-`configs/` 디렉토리에서 다양한 예제를 확인할 수 있습니다:
-
-- `naver.json`: 네이버 크롤링 설정
-- `google.json`: 구글 크롤링 설정
-- `example.json`: 일반적인 설정 템플릿
-
-## 환경 변수
-
-`.env` 파일에 다음 설정이 필요합니다:
-
-```
-GOOGLE_API_KEY=your_gemini_api_key
+#### 2. Search Paths
+```json
+{
+  "type": "search_path",
+  "data": {
+    "query": "유튜브에서 좋아요 한 음악 재생목록 여는 방법",
+    "limit": 3,
+    "domain_hint": "youtube.com"
+  }
+}
 ```
 
-## 출력
+#### 3. Check Graph Structure
+```json
+{
+  "type": "check_graph",
+  "data": {}
+}
+```
 
-크롤링 결과는 `{domain}_crawl_results.json` 파일로 저장됩니다.
+#### 4. Find Popular Paths
+```json
+{
+  "type": "find_popular_paths",
+  "data": {
+    "domain": "youtube.com",
+    "limit": 10
+  }
+}
+```
 
-## 주의사항
+#### 5. Visualize Paths
+```json
+{
+  "type": "visualize_paths",
+  "data": {
+    "domain": "youtube.com"
+  }
+}
+```
 
-- robots.txt를 준수하세요
-- 서버에 부담을 주지 않도록 적절한 딜레이를 설정하세요
-- 개인정보나 민감한 데이터를 크롤링하지 마세요
+## Architecture
+
+```
+[vowser-client] <=> [vowser-backend] <=> [vowser-mcp-server]
+```
+
+The MCP server serves as the "brain" of the system, handling:
+- Web navigation path storage and analysis
+- AI-powered semantic search
+- Graph-based path recommendations
+- Usage pattern analysis
+
+### Core Components
+
+- **FastAPI WebSocket Server** (`app/main.py`): Single `/ws` endpoint for real-time communication
+- **Neo4j Graph Database** (`app/services/neo4j_service.py`): Graph structures for navigation paths
+- **AI Services** (`app/services/`): LangChain integration for content analysis and embeddings
+- **Data Models** (`app/models/path.py`): Pydantic models for data validation
+
+### Graph Schema
+
+- **ROOT**: Domain-level nodes (e.g., youtube.com)
+- **PAGE**: Interactive elements with selectors and embeddings
+- **PATH**: Complete navigation sequences with semantic search capability
+- **Relationships**: HAS_PAGE, NAVIGATES_TO, NAVIGATES_TO_CROSS_DOMAIN, CONTAINS
+
+## Development
+
+### Project Structure
+```
+vowser-mcp-server/
+├── app/                    # Main application
+│   ├── main.py            # FastAPI WebSocket server
+│   ├── models/            # Pydantic models
+│   └── services/          # Business logic
+├── docs/                  # Documentation
+├── test/                  # Test files
+└── requirements.txt       # Dependencies
+```
+
+### Testing Strategy
+- `test_single.py`: Comprehensive WebSocket message testing
+- All tests should pass with "5/5 성공" result
+- Integration tests for Neo4j functionality
+
+## License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Related Projects
+
+- **vowser-backend**: Kotlin/Spring Boot central API gateway
+- **vowser-client**: Kotlin Multiplatform user-facing application
+
+For more detailed information, see [CLAUDE.md](CLAUDE.md).
