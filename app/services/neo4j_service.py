@@ -711,8 +711,9 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
         WHERE path.embedding IS NOT NULL {domain_filter}
         RETURN path
         """
-        
+
         all_paths = graph.query(path_search_query)
+        print(f"[DEBUG] 찾은 PATH 수: {len(all_paths)}")
         
         # Python에서 코사인 유사도 계산
         import numpy as np
@@ -753,7 +754,7 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
         
         # 유사도 순으로 정렬
         path_results = sorted(path_results, key=lambda x: x['similarity'], reverse=True)[:limit]
-        
+
         # 2. PATH가 없으면 PAGE 노드에서 검색
         if not path_results:
             page_search_query = f"""
@@ -781,6 +782,7 @@ def search_paths_by_query(query_text, limit=3, domain_hint=None):
             
             # 유사도 순으로 정렬
             page_results = sorted(page_results, key=lambda x: x['similarity'], reverse=True)[:5]
+            print(f"[DEBUG] 0.1 이상 PAGE 수: {len(page_results)}")
             
             if page_results:
                 # 찾은 PAGE를 포함하는 경로 구성
