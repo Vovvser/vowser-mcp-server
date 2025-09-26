@@ -5,6 +5,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv, find_dotenv
 from app.services import neo4j_service
 from app.models.path import PathData, SearchPathRequest
+from app.models.contribution import ContributionPathData
 
 load_dotenv(find_dotenv())
 
@@ -134,6 +135,54 @@ async def websocket_endpoint(websocket: WebSocket):
                         "status": "success",
                         "data": cleanup_result or {"message": "정리 실패"}
                     }
+
+                elif message['type'] == 'save_contribution_path':
+                    # 기여모드 경로 저장 (디버깅을 위해 DB 저장 없이 로그만 출력)
+                    try:
+                        contribution_data = ContributionPathData(**message['data'])
+                        print(f"\n=== 기여모드 데이터 수신 ===")
+                        print(f"SessionId: {contribution_data.sessionId}")
+                        print(f"Task: {contribution_data.task}")
+                        print(f"IsPartial: {contribution_data.isPartial}")
+                        print(f"IsComplete: {contribution_data.isComplete}")
+                        print(f"TotalSteps: {contribution_data.totalSteps}")
+                        print(f"Steps Count: {len(contribution_data.steps)}")
+
+                        for i, step in enumerate(contribution_data.steps):
+                            print(f"\n--- Step {i+1} ---")
+                            print(f"URL: {step.url}")
+                            print(f"Title: {step.title}")
+                            print(f"Action: {step.action}")
+                            print(f"Selector: {step.selector}")
+                            print(f"HTML Attributes: {step.htmlAttributes}")
+                            print(f"Timestamp: {step.timestamp}")
+
+                        print(f"\n=== Raw Data ===")
+                        print(f"Full message data: {message['data']}")
+                        print(f"=== 기여모드 데이터 분석 완료 ===\n")
+
+                        response = {
+                            "type": "contribution_save_result",
+                            "status": "success",
+                            "data": {
+                                "message": "기여모드 데이터 로그 출력 완료 (DB 저장 안함)",
+                                "sessionId": contribution_data.sessionId,
+                                "task": contribution_data.task,
+                                "stepsCount": len(contribution_data.steps),
+                                "isComplete": contribution_data.isComplete
+                            }
+                        }
+                    except Exception as e:
+                        print(f"기여모드 데이터 처리 실패: {e}")
+                        response = {
+                            "type": "contribution_save_result",
+                            "status": "error",
+                            "data": {
+                                "message": f"기여모드 데이터 처리 실패: {str(e)}",
+                                "sessionId": message.get('data', {}).get('sessionId', 'unknown'),
+                                "savedSteps": 0
+                            }
+                        }
 
                 elif message['type'] == 'create_indexes':
                     # 벡터 인덱스 생성
