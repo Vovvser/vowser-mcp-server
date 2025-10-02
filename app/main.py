@@ -6,6 +6,7 @@ from dotenv import load_dotenv, find_dotenv
 from app.services import neo4j_service
 from app.models.path import PathData, SearchPathRequest
 from app.models.contribution import ContributionPathData
+from app.models.step import PathSubmission
 
 load_dotenv(find_dotenv())
 
@@ -32,17 +33,28 @@ async def websocket_endpoint(websocket: WebSocket):
 
             try:
                 if message['type'] == 'save_path':
-                    path_data = PathData(**message['data'])
-                    print(f"경로 저장 시작: {path_data.startCommand}")
+                    # DEPRECATED: 기존 save_path (PathData 구조) - 새 구조로 마이그레이션 필요
+                    response = {
+                        "type": "path_save_result",
+                        "status": "error",
+                        "data": {
+                            "message": "DEPRECATED: save_path is no longer supported. Please migrate to save_new_path with PathSubmission structure.",
+                            "migration_guide": "See docs/DTO_API_DOCUMENTATION.md for new structure"
+                        }
+                    }
 
-                    path_with_metadata = neo4j_service.add_metadata_to_path(path_data.model_dump())
-                    result = neo4j_service.save_path_to_neo4j(path_with_metadata)
+                elif message['type'] == 'save_new_path':
+                    # 새로운 save_path (PathSubmission 구조)
+                    path_submission = PathSubmission(**message['data'])
+                    print(f"새 구조 경로 저장 시작: {path_submission.taskIntent}")
+
+                    result = neo4j_service.save_path_to_neo4j(path_submission)
 
                     response = {
                         "type": "path_save_result",
-                        "status": "success",
+                        "status": "success" if result['status'] == 'success' else "error",
                         "data": {
-                            "message": "Path data processed successfully!",
+                            "message": "New path structure processed successfully!",
                             "result": result
                         }
                     }
@@ -88,29 +100,35 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
 
                 elif message['type'] == 'search_path':
-                    # 자연어 경로 검색
+                    # DEPRECATED: 기존 search_path - 새 구조로 마이그레이션 필요
+                    response = {
+                        "type": "search_path_result",
+                        "status": "error",
+                        "data": {
+                            "message": "DEPRECATED: search_path is no longer supported. Please use search_new_path.",
+                            "migration_guide": "See docs/DTO_API_DOCUMENTATION.md"
+                        }
+                    }
+
+                elif message['type'] == 'search_new_path':
+                    # 자연어 경로 검색 (새 구조)
                     try:
                         search_request = SearchPathRequest(**message['data'])
-                        print(f"[MAIN DEBUG] 경로 검색 요청: {search_request.query}")
+                        print(f"[NEW] 경로 검색 요청: {search_request.query}")
 
                         search_result = neo4j_service.search_paths_by_query(
                             search_request.query,
                             search_request.limit,
                             search_request.domain_hint
                         )
-                        print(f"[MAIN DEBUG] 검색 결과: {search_result}")
+                        print(f"[NEW] 검색 결과: {search_result}")
                     except Exception as e:
-                        print(f"[MAIN DEBUG] search_path 오류: {e}")
+                        print(f"[NEW] search_path 오류: {e}")
                         import traceback
                         traceback.print_exc()
                         search_result = None
 
                     if search_result:
-                        # 검색된 경로들의 사용 추적
-                        for path in search_result.get('matched_paths', []):
-                            if path.get('pathId') and path['pathId'] != 'unknown':
-                                neo4j_service.update_path_usage(path['pathId'])
-
                         response = {
                             "type": "search_path_result",
                             "status": "success",
@@ -122,7 +140,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "status": "error",
                             "data": {
                                 "message": "경로 검색 실패",
-                                "query": search_request.query
+                                "query": search_request.query if 'search_request' in locals() else "unknown"
                             }
                         }
 
@@ -185,16 +203,35 @@ async def websocket_endpoint(websocket: WebSocket):
                         }
 
                 elif message['type'] == 'create_indexes':
-                    # 벡터 인덱스 생성
-                    index_result = neo4j_service.create_vector_indexes()
-
+                    # DEPRECATED: 기존 create_indexes - 새 구조로 마이그레이션 필요
                     response = {
                         "type": "index_creation_result",
-                        "status": "success" if index_result else "error",
+                        "status": "error",
                         "data": {
-                            "message": "인덱스 생성 완료" if index_result else "인덱스 생성 실패"
+                            "message": "DEPRECATED: create_indexes is no longer supported. Please use create_new_indexes.",
+                            "migration_guide": "See docs/DTO_API_DOCUMENTATION.md"
                         }
                     }
+
+                elif message['type'] == 'create_new_indexes':
+                    # 벡터 인덱스 생성 (새 구조)
+                    try:
+                        neo4j_service.create_vector_indexes()
+                        response = {
+                            "type": "index_creation_result",
+                            "status": "success",
+                            "data": {
+                                "message": "새 구조 인덱스 생성 완료"
+                            }
+                        }
+                    except Exception as e:
+                        response = {
+                            "type": "index_creation_result",
+                            "status": "error",
+                            "data": {
+                                "message": f"새 구조 인덱스 생성 실패: {str(e)}"
+                            }
+                        }
 
                 else:
                     response = {
