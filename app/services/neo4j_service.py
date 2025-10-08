@@ -263,14 +263,24 @@ def search_paths_by_query(
             intent_search_query = """
             MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
-            RETURN r, rel, firstStep
+            RETURN r.domain as domain,
+                   r.baseURL as baseURL,
+                   rel.taskIntent as taskIntent,
+                   rel.intentEmbedding as intentEmbedding,
+                   rel.weight as weight,
+                   firstStep.stepId as stepId
             """
             all_intents = graph.query(intent_search_query, {'domain': domain_hint})
         else:
             intent_search_query = """
             MATCH (r:ROOT)-[rel:HAS_STEP]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
-            RETURN r, rel, firstStep
+            RETURN r.domain as domain,
+                   r.baseURL as baseURL,
+                   rel.taskIntent as taskIntent,
+                   rel.intentEmbedding as intentEmbedding,
+                   rel.weight as weight,
+                   firstStep.stepId as stepId
             """
             all_intents = graph.query(intent_search_query)
 
@@ -289,15 +299,15 @@ def search_paths_by_query(
 
         intent_results = []
         for item in all_intents:
-            rel = item['rel']
-            intent_embedding = rel.get('intentEmbedding')
+            intent_embedding = item['intentEmbedding']
             if intent_embedding:
                 similarity = cosine_similarity(query_embedding, intent_embedding)
                 if similarity > 0.3:  # 임계값
                     intent_results.append({
-                        'root': item['r'],
-                        'relation': rel,
-                        'firstStep': item['firstStep'],
+                        'domain': item['domain'],
+                        'taskIntent': item['taskIntent'],
+                        'weight': item['weight'],
+                        'stepId': item['stepId'],
                         'similarity': similarity
                     })
 
@@ -307,7 +317,7 @@ def search_paths_by_query(
         # 4. 경로 재구성
         matched_paths = []
         for result in intent_results:
-            first_step_id = result['firstStep']['stepId']
+            first_step_id = result['stepId']
 
             # 경로 추적 (NEXT_STEP 관계 따라가기)
             path_query = """
@@ -341,10 +351,10 @@ def search_paths_by_query(
                     })
 
                 matched_paths.append({
-                    'domain': result['root']['domain'],
-                    'taskIntent': result['relation']['taskIntent'],
+                    'domain': result['domain'],
+                    'taskIntent': result['taskIntent'],
                     'relevance_score': round(result['similarity'], 3),
-                    'weight': result['relation'].get('weight', 1),
+                    'weight': result['weight'],
                     'steps': formatted_steps
                 })
 
