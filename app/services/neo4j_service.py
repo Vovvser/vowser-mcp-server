@@ -78,7 +78,7 @@ def save_path_to_neo4j(path_submission: PathSubmission):
         task_intent = path_submission.taskIntent
 
         # 1. ROOT 노드 생성/업데이트
-        root_embedding = generate_embedding(f"{domain} {task_intent}")
+        root_embedding = generate_embedding(domain)
 
         create_root_query = """
         MERGE (r:ROOT {domain: $domain})
