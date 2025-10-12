@@ -271,13 +271,13 @@ ws://localhost:8000/ws
 
 ### 1. 경로 저장 (리팩토링)
 
-**요청 타입**: `save_path_refactored`
+**요청 타입**: `save_new_path`
 
 **요청 데이터**: `PathSubmission` 객체
 
 ```json
 {
-  "type": "save_path_refactored",
+  "type": "save_new_path",
   "data": {
     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
     "taskIntent": "날씨 보기",
@@ -317,13 +317,13 @@ ws://localhost:8000/ws
 
 ### 2. 경로 검색 (리팩토링)
 
-**요청 타입**: `search_path_refactored`
+**요청 타입**: `search_new_path`
 
 **요청 데이터**: `SearchPathRequest` 객체
 
 ```json
 {
-  "type": "search_path_refactored",
+  "type": "search_new_path",
   "data": {
     "query": "네이버 날씨 보여줘",
     "limit": 3,
@@ -461,7 +461,7 @@ data class Performance(
 Client (기여모드)
   → 사용자 웹 탐색 기록
   → PathSubmission 객체 생성
-  → WebSocket 전송 (save_path_refactored)
+  → WebSocket 전송 (save_new_path)
   → MCP Server
      → Neo4j 저장 (DOMAIN, STEP, HAS_STEP, NEXT_STEP)
   → 응답 수신
@@ -473,7 +473,7 @@ Client (기여모드)
 Client (자동화 모드)
   → 사용자 자연어 입력 ("네이버 날씨 보여줘")
   → SearchPathRequest 생성
-  → WebSocket 전송 (search_path_refactored)
+  → WebSocket 전송 (search_new_path)
   → MCP Server
      → 임베딩 생성
      → taskIntent 유사도 계산
@@ -624,7 +624,7 @@ async def test_save_path():
     }
 
     message = {
-        "type": "save_path_refactored",
+        "type": "save_new_path",
         "data": path_data
     }
 
@@ -643,7 +643,7 @@ async def test_search_path():
     uri = "ws://localhost:8000/ws"
 
     message = {
-        "type": "search_path_refactored",
+        "type": "search_new_path",
         "data": {
             "query": "네이버 날씨 보여줘",
             "limit": 3
@@ -679,7 +679,7 @@ suspend fun submitPath(steps: List<StepData>, taskIntent: String, domain: String
     )
 
     val message = WebSocketMessage(
-        type = "save_path_refactored",
+        type = "save_new_path",
         data = Json.encodeToJsonElement(pathSubmission)
     )
 
@@ -689,7 +689,7 @@ suspend fun submitPath(steps: List<StepData>, taskIntent: String, domain: String
 // 경로 검색
 suspend fun searchPath(query: String): PathSearchResult? {
     val message = WebSocketMessage(
-        type = "search_path_refactored",
+        type = "search_new_path",
         data = buildJsonObject {
             put("query", query)
             put("limit", 3)
