@@ -221,6 +221,7 @@ def save_path_to_neo4j(path_submission: PathSubmission):
             'steps_saved': len(path_submission.steps)
         }
 
+
     except Exception as e:
         print(f"❌ 경로 저장 실패: {e}")
         import traceback
@@ -264,11 +265,11 @@ def search_paths_by_query(
             MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
             RETURN r.domain as domain,
-                   r.baseURL as baseURL,
-                   rel.taskIntent as taskIntent,
-                   rel.intentEmbedding as intentEmbedding,
-                   rel.weight as weight,
-                   firstStep.stepId as stepId
+                    r.baseURL as baseURL,
+                    rel.taskIntent as taskIntent,
+                    rel.intentEmbedding as intentEmbedding,
+                    rel.weight as weight,
+                    firstStep.stepId as stepId
             """
             all_intents = graph.query(intent_search_query, {'domain': domain_hint})
         else:
@@ -276,11 +277,11 @@ def search_paths_by_query(
             MATCH (r:ROOT)-[rel:HAS_STEP]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
             RETURN r.domain as domain,
-                   r.baseURL as baseURL,
-                   rel.taskIntent as taskIntent,
-                   rel.intentEmbedding as intentEmbedding,
-                   rel.weight as weight,
-                   firstStep.stepId as stepId
+                    r.baseURL as baseURL,
+                    rel.taskIntent as taskIntent,
+                    rel.intentEmbedding as intentEmbedding,
+                    rel.weight as weight,
+                    firstStep.stepId as stepId
             """
             all_intents = graph.query(intent_search_query)
 
@@ -325,7 +326,7 @@ def search_paths_by_query(
             WHERE NOT (end)-[:NEXT_STEP]->()
             WITH path, relationships(path) as rels
             RETURN [node in nodes(path) | node] as steps,
-                   [rel in rels | rel.sequenceOrder] as orders
+                [rel in rels | rel.sequenceOrder] as orders
             LIMIT 1
             """
 
@@ -371,13 +372,13 @@ def search_paths_by_query(
             }
         }
 
+
     except Exception as e:
         print(f"❌ 경로 검색 실패: {e}")
         import traceback
         traceback.print_exc()
         return None
-
-
+    
 # ============================================================================
 # 인덱스 및 제약 조건 관리
 # ============================================================================
@@ -424,8 +425,8 @@ def create_vector_indexes():
                 CREATE VECTOR INDEX root_embedding IF NOT EXISTS
                 FOR (r:ROOT) ON (r.embedding)
                 OPTIONS {indexConfig: {
-                  `vector.dimensions`: 1536,
-                  `vector.similarity_function`: 'cosine'
+                    `vector.dimensions`: 1536,
+                    `vector.similarity_function`: 'cosine'
                 }}
             """)
             print("  ✓ ROOT.embedding 벡터 인덱스 생성")
@@ -437,8 +438,8 @@ def create_vector_indexes():
                 CREATE VECTOR INDEX step_embedding IF NOT EXISTS
                 FOR (s:STEP) ON (s.embedding)
                 OPTIONS {indexConfig: {
-                  `vector.dimensions`: 1536,
-                  `vector.similarity_function`: 'cosine'
+                    `vector.dimensions`: 1536,
+                    `vector.similarity_function`: 'cosine'
                 }}
             """)
             print("  ✓ STEP.embedding 벡터 인덱스 생성")
@@ -457,6 +458,58 @@ def create_vector_indexes():
 
         print("\n✅ 인덱스 생성 완료!")
         return True
+
+    except Exception as e:
+        print(f"❌ 인덱스 생성 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+# ============================================================================
+# 그래프 구조 확인 및 통계
+# ============================================================================
+
+def check_graph_structure():
+    """
+    그래프 구조 확인 및 통계 반환
+    """
+    if not graph:
+        raise ConnectionError("Neo4j database is not connected.")
+    
+    print("인덱스 생성 중...")
+    
+    try:
+        stats_query = """
+        MATCH (r:ROOT)
+        WITH count(r) as rootCount
+        MATCH (s:STEP)
+        WITH rootCount, count(s) as stepCount
+        MATCH ()-[hs:HAS_STEP]->()
+        WITH rootCount, stepCount, count(hs) as hasStepCount
+        MATCH ()-[ns:NEXT_STEP]->()
+        RETURN rootCount, stepCount, hasStepCount, count(ns) as nextStepCount
+        """
+
+        result = graph.query(stats_query)
+
+        if result:
+            stats = result[0]
+            return {
+                'ROOT_nodes': stats.get('rootCount', 0),
+                'STEP_nodes': stats.get('stepCount', 0),
+                'HAS_STEP_relations': stats.get('hasStepCount', 0),
+                'NEXT_STEP_relations': stats.get('nextStepCount', 0),
+                'structure': 'ROOT -> [HAS_STEP] -> STEP -> [NEXT_STEP] -> STEP'
+            }
+        else:
+            return {
+                'ROOT_nodes': 0,
+                'STEP_nodes': 0,
+                'HAS_STEP_relations': 0,
+                'NEXT_STEP_relations': 0,
+                'structure': 'Empty graph'
+            }
 
     except Exception as e:
         print(f"❌ 인덱스 생성 실패: {e}")
@@ -526,9 +579,9 @@ def visualize_paths(domain: str):
         OPTIONAL MATCH path = (firstStep)-[:NEXT_STEP*0..10]->(lastStep:STEP)
         WHERE NOT (lastStep)-[:NEXT_STEP]->()
         RETURN hs.taskIntent as taskIntent,
-               hs.weight as weight,
-               [node in nodes(path) | node.description] as steps,
-               length(path) as pathLength
+                hs.weight as weight,
+                [node in nodes(path) | node.description] as steps,
+                length(path) as pathLength
         ORDER BY hs.weight DESC
         LIMIT 10
         """
@@ -545,7 +598,7 @@ def visualize_paths(domain: str):
             })
 
         return paths
-
+    
     except Exception as e:
         print(f"경로 시각화 실패: {e}")
         return []
@@ -563,9 +616,9 @@ def find_popular_paths(domain: Optional[str] = None, limit: int = 10):
             query = """
             MATCH (r:ROOT {domain: $domain})-[hs:HAS_STEP]->(s:STEP)
             RETURN r.domain as domain,
-                   hs.taskIntent as taskIntent,
-                   hs.weight as usageCount,
-                   s.description as firstStepDescription
+                    hs.taskIntent as taskIntent,
+                    hs.weight as usageCount,
+                    s.description as firstStepDescription
             ORDER BY hs.weight DESC
             LIMIT $limit
             """
@@ -574,9 +627,9 @@ def find_popular_paths(domain: Optional[str] = None, limit: int = 10):
             query = """
             MATCH (r:ROOT)-[hs:HAS_STEP]->(s:STEP)
             RETURN r.domain as domain,
-                   hs.taskIntent as taskIntent,
-                   hs.weight as usageCount,
-                   s.description as firstStepDescription
+                    hs.taskIntent as taskIntent,
+                    hs.weight as usageCount,
+                    s.description as firstStepDescription
             ORDER BY hs.weight DESC
             LIMIT $limit
             """
