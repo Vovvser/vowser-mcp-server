@@ -64,13 +64,16 @@ Instead of replacing the entire system, we'll add a **single LangGraph workflow*
 
 ```
 User Query → [LangGraph Workflow] → Path Selection → Results
+                    │
                     ↓
-         ┌──────────┴──────────┐
-         ↓                     ↓
-    Intent Analysis     Context Enrichment
-         ↓                     ↓
-    Path Ranking        Branch Decision
-         └──────────┬──────────┘
+            Intent Analysis
+                    │
+                    ↓
+             Branch Decision
+                    │
+                    ↓
+              Path Ranking
+                    │
                     ↓
              Selected Path
 ```
