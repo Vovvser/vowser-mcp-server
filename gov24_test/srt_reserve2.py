@@ -331,6 +331,7 @@ async def filter_and_reserve(page: Page, p: SearchParams) -> bool:
             # 페이지가 이동하거나 새로운 팝업이 열릴 것을 기대합니다.
             # expect_event('popup') 또는 expect_navigation()을 사용할 수 있지만,
             # Playwright의 자동 대기 기능을 신뢰하고 단순 click()만 사용합니다.
+            print("button:", candidate["button"])
             await candidate["button"].click()
             
             # 클릭 성공 후, URL이 바뀌거나 다음 단계로 넘어갔는지 확인하는 로직 추가 가능
