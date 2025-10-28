@@ -61,8 +61,8 @@ Path selection happens in `neo4j_service.py:search_paths_by_query()`:
 flowchart TD
     A[사용자 요청] --> B1[의도 분석]
     B1 --> C{벡터 유사도<br/>분석}
-    C -->|유사도 < 0.4| B2[다른 Agent로<br/>경로 재탐색]
-    C -->|유사도 >= 0.4| C1[기존 경로<br/>top k 순위화]
+    C -->|유사도 < 0.43| B2[다른 Agent로<br/>경로 재탐색]
+    C -->|유사도 >= 0.43| C1[기존 경로<br/>top k 순위화]
     B2 --> D[선택된 경로]
     C1 --> D[선택된 경로]
 ```
@@ -85,8 +85,8 @@ flowchart TD
 
 ```
 사용자 요청 → 의도 분석 → 벡터 유사도 분석 → {
-    유사도 < 0.4: 다른 Agent로 경로 재탐색
-    유사도 >= 0.4: 기존 경로 top k 순위화
+    유사도 < 0.43: 다른 Agent로 경로 재탐색
+    유사도 >= 0.43: 기존 경로 top k 순위화
 } → 최종 경로 선택
 ```
 
@@ -159,7 +159,7 @@ elif message['type'] == 'search_new_path':
     
     # LangGraph를 사용한 지능적 경로 검색
     from app.services.langgraph_service import search_with_langgraph
-    
+
     search_result = await search_with_langgraph(
         query=message['data']['query'],
         domain_hint=message['data'].get('domain_hint'),
@@ -251,8 +251,8 @@ async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionS
     if existing_results and existing_results["matched_paths"]:
         max_similarity = existing_results["matched_paths"][0].get("relevance_score", 0.0)
     
-    # 임계값 설정 (0.4)
-    similarity_threshold = 0.4
+    # 임계값 설정 (0.43)
+    similarity_threshold = 0.43
     
     return {
         **state,
@@ -263,7 +263,7 @@ async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionS
 def should_use_rediscovery_agent(state: PathSelectionState) -> str:
     """
     벡터 유사도에 따라 분기 결정
-    
+
     Returns:
     - "high_similarity": 기존 경로 순위화 사용
     - "low_similarity": 다른 Agent로 재탐색 사용
@@ -318,7 +318,7 @@ async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
     
     # 복합 점수로 정렬
     ranked_paths.sort(key=lambda x: x["composite_score"], reverse=True)
-    
+
     return {
         **state,
         "selected_paths": ranked_paths[:state.get("limit", 3)],
@@ -807,10 +807,10 @@ websocket.send(JSON.stringify({
         "nodes": {
             "analyze_intent": "사용자 의도 분석",
             "analyze_similarity": "벡터 유사도 분석",
-            "rank_existing_paths": "기존 경로 순위화 (유사도 >= 0.4)",
-            "rediscover_with_agent": "다른 Agent로 재탐색 (유사도 < 0.4)"
+            "rank_existing_paths": "기존 경로 순위화 (유사도 >= 0.43)",
+            "rediscover_with_agent": "다른 Agent로 재탐색 (유사도 < 0.43)"
         },
-        "threshold": 0.4,
+        "threshold": 0.43,
         "branches": {
             "high_similarity": "rank_existing_paths",
             "low_similarity": "rediscover_with_agent"
@@ -835,12 +835,12 @@ Conditional Branches: 1
 노드 구조:
 1. analyze_intent - 사용자 의도 분석
 2. analyze_similarity - 벡터 유사도 분석
-3. rank_existing_paths - 기존 경로 순위화 (유사도 >= 0.4)
-4. rediscover_with_agent - 다른 Agent로 재탐색 (유사도 < 0.4)
+3. rank_existing_paths - 기존 경로 순위화 (유사도 >= 0.43)
+4. rediscover_with_agent - 다른 Agent로 재탐색 (유사도 < 0.43)
 
 분기 조건:
-- 유사도 >= 0.4: rank_existing_paths
-- 유사도 < 0.4: rediscover_with_agent
+- 유사도 >= 0.43: rank_existing_paths
+- 유사도 < 0.43: rediscover_with_agent
 
 워크플로우 그래프:
 analyze_intent → analyze_similarity → {
