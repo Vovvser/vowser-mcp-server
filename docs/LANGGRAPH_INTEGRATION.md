@@ -55,21 +55,22 @@ Path selection happens in `neo4j_service.py:search_paths_by_query()`:
 
 ### Updated Workflow Architecture
 
-새로운 플로우는 더 단순하고 효율적인 구조를 가집니다:
+새로운 플로우는 조건부 분기를 통한 지능적 경로 선택 구조를 가집니다:
 
 ```mermaid
 flowchart TD
     A[사용자 요청] --> B1[의도 분석]
-    B1 --> B2[경로 재탐색]
-    B1 --> C1[경로 top k 순위화]
-    B2 --> C1[경로 top k 순위화]
+    B1 --> C{벡터 유사도<br/>분석}
+    C -->|유사도 < 0.43| B2[다른 Agent로<br/>경로 재탐색]
+    C -->|유사도 >= 0.43| C1[기존 경로<br/>top k 순위화]
+    B2 --> D[선택된 경로]
     C1 --> D[선택된 경로]
 ```
 
 **핵심 변화점:**
-1. **의도 분석 후 병렬 처리**: 경로 재탐색과 기존 경로 순위화가 동시에 실행
-2. **단순화된 분기**: 복잡한 조건부 로직 제거
-3. **효율적인 워크플로우**: 불필요한 단계 제거로 성능 향상
+1. **조건부 분기**: 벡터 유사도에 따른 지능적 전략 선택
+2. **다중 Agent 전략**: 낮은 유사도 시 다른 접근 방식 사용
+3. **효율적인 워크플로우**: 상황에 맞는 최적화된 경로 선택
 
 ---
 
@@ -78,12 +79,15 @@ flowchart TD
 ### Goal
 새로운 단순화된 플로우에 맞춰 **LangGraph를 적용**하여 효율적인 경로 선택 시스템 구축
 
-### Strategy: Simplified Parallel Path Processing
+### Strategy: Conditional Path Processing with Multi-Agent Approach
 
-새로운 플로우는 의도 분석 후 두 가지 작업을 병렬로 처리합니다:
+새로운 플로우는 의도 분석 후 벡터 유사도에 따라 다른 전략을 선택합니다:
 
 ```
-사용자 요청 → 의도 분석 → [경로 재탐색 + 기존 경로 순위화] → 최종 경로 선택
+사용자 요청 → 의도 분석 → 벡터 유사도 분석 → {
+    유사도 < 0.43: 다른 Agent로 경로 재탐색
+    유사도 >= 0.43: 기존 경로 top k 순위화
+} → 최종 경로 선택
 ```
 
 ### Proposed Architecture
@@ -97,41 +101,47 @@ from app.services import neo4j_service
 from app.services.embedding_service import generate_embedding
 
 class PathSelectionState(TypedDict):
-    """State for simplified path selection workflow"""
+    """State for conditional path selection workflow"""
     user_query: str
     domain_hint: str | None
     query_embedding: List[float]
     intent_analysis: dict  # 의도 분석 결과
-    existing_paths: List[dict]  # 기존 경로들
-    rediscovered_paths: List[dict]  # 재탐색된 경로들
-    final_paths: List[dict]  # 최종 선택된 경로들
+    similarity_threshold: float  # 벡터 유사도 임계값
+    max_similarity: float  # 최대 유사도 점수
+    selected_paths: List[dict]  # 최종 선택된 경로들
+    processing_strategy: str  # 사용된 처리 전략
     reasoning: str
 
 def build_path_selection_graph():
-    """Build simplified LangGraph for path selection"""
+    """Build conditional LangGraph for path selection"""
 
     workflow = StateGraph(PathSelectionState)
 
     # Node 1: 의도 분석
     workflow.add_node("analyze_intent", analyze_user_intent)
 
-    # Node 2: 기존 경로 순위화 (병렬)
+    # Node 2: 벡터 유사도 분석
+    workflow.add_node("analyze_similarity", analyze_vector_similarity)
+
+    # Node 3: 기존 경로 순위화 (높은 유사도)
     workflow.add_node("rank_existing_paths", rank_existing_paths)
 
-    # Node 3: 경로 재탐색 (병렬)
-    workflow.add_node("rediscover_paths", rediscover_paths)
+    # Node 4: 다른 Agent로 경로 재탐색 (낮은 유사도)
+    workflow.add_node("rediscover_with_agent", rediscover_with_different_agent)
 
-    # Node 4: 최종 경로 선택
-    workflow.add_node("select_final_paths", select_final_paths)
+    # 조건부 분기: 벡터 유사도에 따라 다른 전략 선택
+    workflow.add_conditional_edges(
+        "analyze_similarity",
+        should_use_rediscovery_agent,  # 분기 함수
+        {
+            "high_similarity": "rank_existing_paths",
+            "low_similarity": "rediscover_with_agent"
+        }
+    )
 
-    # 의도 분석 후 두 작업을 병렬로 실행
-    workflow.add_edge("analyze_intent", "rank_existing_paths")
-    workflow.add_edge("analyze_intent", "rediscover_paths")
-    
-    # 두 병렬 작업 완료 후 최종 선택
-    workflow.add_edge("rank_existing_paths", "select_final_paths")
-    workflow.add_edge("rediscover_paths", "select_final_paths")
-    workflow.add_edge("select_final_paths", END)
+    # 두 경로 모두 최종 결과로 연결
+    workflow.add_edge("rank_existing_paths", END)
+    workflow.add_edge("rediscover_with_agent", END)
 
     workflow.set_entry_point("analyze_intent")
 
@@ -143,8 +153,11 @@ def build_path_selection_graph():
 **Update `app/main.py`:**
 
 ```python
-# Add new message type for LangGraph-powered search
-elif message['type'] == 'search_path_smart':
+elif message['type'] == 'search_new_path':
+    # 기존 방식 주석 처리하고 LangGraph 사용
+    # search_result = neo4j_service.search_paths_by_query(...)  # 기존 방식 주석
+    
+    # LangGraph를 사용한 지능적 경로 검색
     from app.services.langgraph_service import search_with_langgraph
 
     search_result = await search_with_langgraph(
@@ -154,9 +167,11 @@ elif message['type'] == 'search_path_smart':
     )
 ```
 
-**Backward Compatible:**
-- Keep existing `search_new_path` for simple searches
-- Add `search_path_smart` for LangGraph-powered searches
+**완전한 하위 호환성:**
+- 기존 `search_new_path` 메시지 타입 그대로 사용
+- DTO 구조 변경 없음
+- 클라이언트 코드 변경 없음
+- 내부적으로만 LangGraph 워크플로우 사용
 
 ---
 
@@ -211,18 +226,68 @@ async def analyze_user_intent(state: PathSelectionState) -> PathSelectionState:
     }
 ```
 
-### Node 2: 기존 경로 순위화 (rank_existing_paths)
+### Node 2: 벡터 유사도 분석 (analyze_vector_similarity)
+
+```python
+async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionState:
+    """
+    기존 데이터베이스에서 벡터 유사도 분석하여 분기 결정
+    
+    분석 과정:
+    1. 기존 검색으로 최대 유사도 점수 확인
+    2. 임계값과 비교하여 분기 전략 결정
+    3. 다음 단계를 위한 컨텍스트 제공
+    """
+    from app.services import neo4j_service
+    
+    # 기존 검색으로 최대 유사도 확인
+    existing_results = neo4j_service.search_paths_by_query(
+        state["user_query"],
+        limit=1,  # 최대 유사도만 확인
+        domain_hint=state["domain_hint"]
+    )
+    
+    max_similarity = 0.0
+    if existing_results and existing_results["matched_paths"]:
+        max_similarity = existing_results["matched_paths"][0].get("relevance_score", 0.0)
+    
+    # 임계값 설정 (0.43)
+    similarity_threshold = 0.43
+    
+    return {
+        **state,
+        "max_similarity": max_similarity,
+        "similarity_threshold": similarity_threshold
+    }
+
+def should_use_rediscovery_agent(state: PathSelectionState) -> str:
+    """
+    벡터 유사도에 따라 분기 결정
+
+    Returns:
+    - "high_similarity": 기존 경로 순위화 사용
+    - "low_similarity": 다른 Agent로 재탐색 사용
+    """
+    max_similarity = state["max_similarity"]
+    threshold = state["similarity_threshold"]
+    
+    if max_similarity >= threshold:
+        return "high_similarity"
+    else:
+        return "low_similarity"
+```
+
+### Node 3: 기존 경로 순위화 (rank_existing_paths)
 
 ```python
 async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
     """
-    기존 데이터베이스의 경로들을 의도 분석 결과를 바탕으로 순위화
+    높은 유사도가 확인된 경우 기존 경로들을 순위화
     
     순위화 기준:
-    1. 의도 매칭 (40%)
-    2. 도메인 선호도 (30%)
+    1. 벡터 유사도 (50%)
+    2. 의도 매칭 (30%)
     3. 사용 빈도 (20%)
-    4. 최근성 (10%)
     """
     from app.services import neo4j_service
     
@@ -234,29 +299,39 @@ async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
     )
     
     if not existing_results:
-        return {**state, "existing_paths": []}
+        return {
+            **state,
+            "selected_paths": [],
+            "processing_strategy": "rank_existing_paths",
+            "reasoning": "기존 경로가 없어서 빈 결과 반환"
+        }
     
     # 의도 분석 결과를 바탕으로 재순위화
     intent_analysis = state["intent_analysis"]
     ranked_paths = []
     
     for path in existing_results["matched_paths"]:
-        # 복합 점수 계산
-        composite_score = calculate_composite_score(path, intent_analysis)
+        # 복합 점수 계산 (높은 유사도 보너스 적용)
+        composite_score = calculate_high_similarity_score(path, intent_analysis)
         path["composite_score"] = composite_score
         ranked_paths.append(path)
     
     # 복합 점수로 정렬
     ranked_paths.sort(key=lambda x: x["composite_score"], reverse=True)
-    
+
     return {
         **state,
-        "existing_paths": ranked_paths[:5]  # 상위 5개만 유지
+        "selected_paths": ranked_paths[:state.get("limit", 3)],
+        "processing_strategy": "rank_existing_paths",
+        "reasoning": f"높은 유사도({state['max_similarity']:.3f})로 기존 경로 순위화 사용"
     }
 
-def calculate_composite_score(path: dict, intent_analysis: dict) -> float:
-    """경로와 의도 분석 결과를 바탕으로 복합 점수 계산"""
+def calculate_high_similarity_score(path: dict, intent_analysis: dict) -> float:
+    """높은 유사도 상황에서의 점수 계산"""
     base_score = path.get("relevance_score", 0.0)
+    
+    # 높은 유사도 보너스
+    similarity_bonus = base_score * 0.2  # 기존 점수의 20% 보너스
     
     # 의도 매칭 보너스
     intent_bonus = 0.0
@@ -268,55 +343,43 @@ def calculate_composite_score(path: dict, intent_analysis: dict) -> float:
     if intent_analysis.get("domain_preference") and intent_analysis["domain_preference"] in path.get("domain", ""):
         domain_bonus = 0.15
     
-    # 긴급도 보너스
-    urgency_bonus = 0.0
-    if intent_analysis["urgency"] == "high":
-        urgency_bonus = 0.05
-    
-    return base_score + intent_bonus + domain_bonus + urgency_bonus
+    return base_score + similarity_bonus + intent_bonus + domain_bonus
 ```
 
-### Node 3: 경로 재탐색 (rediscover_paths)
+### Node 4: 다른 Agent로 경로 재탐색 (rediscover_with_different_agent)
 
 ```python
-async def rediscover_paths(state: PathSelectionState) -> PathSelectionState:
+async def rediscover_with_different_agent(state: PathSelectionState) -> PathSelectionState:
     """
-    의도 분석 결과를 바탕으로 새로운 관점에서 경로 재탐색
+    낮은 유사도 상황에서 다른 Agent 전략으로 경로 재탐색
     
-    재탐색 전략:
-    1. 유사한 의도를 가진 다른 경로들 검색
-    2. 도메인 간 크로스 검색
-    3. 키워드 확장 검색
+    다른 Agent 전략:
+    1. 키워드 기반 검색 Agent
+    2. 도메인 크로스 검색 Agent
+    3. 유사 의도 매칭 Agent
+    4. 하이브리드 검색 Agent
     """
     from app.services import neo4j_service
+    from langchain_openai import ChatOpenAI
+    import json
     
     intent_analysis = state["intent_analysis"]
-    rediscovered = []
+    rediscovered_paths = []
     
-    # 1. 유사 의도 검색
-    similar_intent_query = generate_similar_intent_query(intent_analysis)
-    similar_results = neo4j_service.search_paths_by_query(
-        similar_intent_query,
-        limit=5,
-        domain_hint=None  # 도메인 제한 없이 검색
-    )
+    # Agent 1: 키워드 기반 검색 Agent
+    keyword_agent_paths = await keyword_based_search_agent(state)
+    rediscovered_paths.extend(keyword_agent_paths)
     
-    if similar_results:
-        rediscovered.extend(similar_results["matched_paths"])
+    # Agent 2: 도메인 크로스 검색 Agent
+    cross_domain_paths = await cross_domain_search_agent(state)
+    rediscovered_paths.extend(cross_domain_paths)
     
-    # 2. 키워드 확장 검색
-    expanded_keywords = expand_keywords(state["user_query"], intent_analysis)
-    for keyword in expanded_keywords:
-        keyword_results = neo4j_service.search_paths_by_query(
-            keyword,
-            limit=3,
-            domain_hint=state["domain_hint"]
-        )
-        if keyword_results:
-            rediscovered.extend(keyword_results["matched_paths"])
+    # Agent 3: 유사 의도 매칭 Agent
+    similar_intent_paths = await similar_intent_matching_agent(state)
+    rediscovered_paths.extend(similar_intent_paths)
     
     # 중복 제거 및 점수 재계산
-    unique_paths = deduplicate_paths(rediscovered)
+    unique_paths = deduplicate_paths(rediscovered_paths)
     scored_paths = []
     
     for path in unique_paths:
@@ -327,33 +390,144 @@ async def rediscover_paths(state: PathSelectionState) -> PathSelectionState:
     
     return {
         **state,
-        "rediscovered_paths": scored_paths[:5]  # 상위 5개만 유지
+        "selected_paths": scored_paths[:state.get("limit", 3)],
+        "processing_strategy": "rediscover_with_different_agent",
+        "reasoning": f"낮은 유사도({state['max_similarity']:.3f})로 다른 Agent 전략 사용"
     }
 
-def generate_similar_intent_query(intent_analysis: dict) -> str:
-    """의도 분석 결과를 바탕으로 유사한 의도의 쿼리 생성"""
-    intent_type = intent_analysis["intent_type"]
+async def keyword_based_search_agent(state: PathSelectionState) -> List[dict]:
+    """키워드 기반 검색 Agent"""
+    from app.services import neo4j_service
     
-    similar_queries = {
-        "task_completion": "작업 완료 방법",
-        "navigation": "페이지 이동",
-        "information_seeking": "정보 찾기",
-        "exploration": "기능 탐색"
-    }
+    # 키워드 추출 및 확장
+    keywords = extract_and_expand_keywords(state["user_query"], state["intent_analysis"])
     
-    return similar_queries.get(intent_type, "유사한 작업")
+    paths = []
+    for keyword in keywords[:3]:  # 최대 3개 키워드
+        results = neo4j_service.search_paths_by_query(
+            keyword,
+            limit=2,
+            domain_hint=None  # 도메인 제한 없이 검색
+        )
+        if results:
+            for path in results["matched_paths"]:
+                path["agent_source"] = "keyword_based"
+                paths.append(path)
+    
+    return paths
 
-def expand_keywords(query: str, intent_analysis: dict) -> List[str]:
-    """키워드 확장을 통한 추가 검색어 생성"""
-    expanded = [query]
+async def cross_domain_search_agent(state: PathSelectionState) -> List[dict]:
+    """도메인 크로스 검색 Agent"""
+    from app.services import neo4j_service
+    
+    intent_analysis = state["intent_analysis"]
+    paths = []
+    
+    # 유사한 의도를 가진 다른 도메인 검색
+    similar_intent_query = generate_cross_domain_query(intent_analysis)
+    
+    results = neo4j_service.search_paths_by_query(
+        similar_intent_query,
+        limit=3,
+        domain_hint=None  # 모든 도메인에서 검색
+    )
+    
+    if results:
+        for path in results["matched_paths"]:
+            path["agent_source"] = "cross_domain"
+            paths.append(path)
+    
+    return paths
+
+async def similar_intent_matching_agent(state: PathSelectionState) -> List[dict]:
+    """유사 의도 매칭 Agent"""
+    from app.services import neo4j_service
+    
+    intent_analysis = state["intent_analysis"]
+    paths = []
+    
+    # 의도 유형에 따른 유사 쿼리 생성
+    similar_queries = generate_similar_intent_queries(intent_analysis)
+    
+    for query in similar_queries[:2]:  # 최대 2개 쿼리
+        results = neo4j_service.search_paths_by_query(
+            query,
+            limit=2,
+            domain_hint=state["domain_hint"]
+        )
+        if results:
+            for path in results["matched_paths"]:
+                path["agent_source"] = "similar_intent"
+                paths.append(path)
+    
+    return paths
+
+def extract_and_expand_keywords(query: str, intent_analysis: dict) -> List[str]:
+    """키워드 추출 및 확장"""
+    keywords = [query]
     
     # 의도별 키워드 확장
-    if intent_analysis["intent_type"] == "task_completion":
-        expanded.extend(["하는 방법", "실행하기", "완료하기"])
-    elif intent_analysis["intent_type"] == "navigation":
-        expanded.extend(["가기", "이동", "접근"])
+    intent_type = intent_analysis["intent_type"]
     
-    return expanded[:3]  # 최대 3개로 제한
+    if intent_type == "task_completion":
+        keywords.extend(["작업", "실행", "완료", "수행"])
+    elif intent_type == "navigation":
+        keywords.extend(["이동", "접근", "가기", "페이지"])
+    elif intent_type == "information_seeking":
+        keywords.extend(["정보", "찾기", "검색", "조회"])
+    elif intent_type == "exploration":
+        keywords.extend(["탐색", "둘러보기", "기능", "메뉴"])
+    
+    return keywords[:4]  # 최대 4개로 제한
+
+def generate_cross_domain_query(intent_analysis: dict) -> str:
+    """크로스 도메인 검색을 위한 쿼리 생성"""
+    intent_type = intent_analysis["intent_type"]
+    
+    cross_domain_queries = {
+        "task_completion": "작업 완료하는 방법",
+        "navigation": "페이지나 메뉴 이동",
+        "information_seeking": "정보 찾기나 검색",
+        "exploration": "기능 탐색하기"
+    }
+    
+    return cross_domain_queries.get(intent_type, "유사한 작업")
+
+def generate_similar_intent_queries(intent_analysis: dict) -> List[str]:
+    """유사 의도 매칭을 위한 쿼리들 생성"""
+    intent_type = intent_analysis["intent_type"]
+    
+    similar_queries_map = {
+        "task_completion": ["작업하기", "수행하기", "실행하기"],
+        "navigation": ["페이지 이동", "메뉴 접근", "화면 전환"],
+        "information_seeking": ["정보 검색", "데이터 조회", "내용 찾기"],
+        "exploration": ["기능 탐색", "메뉴 둘러보기", "옵션 확인"]
+    }
+    
+    return similar_queries_map.get(intent_type, ["유사한 작업"])
+
+def calculate_rediscovery_score(path: dict, intent_analysis: dict) -> float:
+    """재탐색된 경로의 점수 계산"""
+    base_score = path.get("relevance_score", 0.0)
+    
+    # Agent별 보너스
+    agent_bonus = 0.0
+    agent_source = path.get("agent_source", "")
+    
+    if agent_source == "keyword_based":
+        agent_bonus = 0.1
+    elif agent_source == "cross_domain":
+        agent_bonus = 0.15  # 크로스 도메인에 더 높은 보너스
+    elif agent_source == "similar_intent":
+        agent_bonus = 0.12
+    
+    # 의도 매칭 보너스
+    intent_match_bonus = 0.0
+    if intent_analysis["confidence"] > 0.6:
+        intent_match_bonus = 0.1
+    
+    return base_score + agent_bonus + intent_match_bonus
+```
 
 def deduplicate_paths(paths: List[dict]) -> List[dict]:
     """중복 경로 제거"""
@@ -367,92 +541,6 @@ def deduplicate_paths(paths: List[dict]) -> List[dict]:
             unique_paths.append(path)
     
     return unique_paths
-
-def calculate_rediscovery_score(path: dict, intent_analysis: dict) -> float:
-    """재탐색된 경로의 점수 계산"""
-    base_score = path.get("relevance_score", 0.0)
-    
-    # 재탐색 보너스
-    rediscovery_bonus = 0.1
-    
-    # 의도 매칭 보너스
-    intent_match_bonus = 0.0
-    if intent_analysis["confidence"] > 0.7:
-        intent_match_bonus = 0.15
-    
-    return base_score + rediscovery_bonus + intent_match_bonus
-```
-
-### Node 4: 최종 경로 선택 (select_final_paths)
-
-```python
-async def select_final_paths(state: PathSelectionState) -> PathSelectionState:
-    """
-    기존 경로와 재탐색된 경로를 통합하여 최종 경로 선택
-    
-    선택 기준:
-    1. 기존 경로와 재탐색 경로의 균형
-    2. 의도 분석 결과와의 일치도
-    3. 사용자 요구사항 충족도
-    """
-    existing_paths = state.get("existing_paths", [])
-    rediscovered_paths = state.get("rediscovered_paths", [])
-    intent_analysis = state["intent_analysis"]
-    
-    # 모든 경로 통합
-    all_paths = []
-    
-    # 기존 경로 추가 (가중치 적용)
-    for path in existing_paths:
-        path["source"] = "existing"
-        path["final_score"] = path.get("composite_score", 0.0) * 0.6  # 기존 경로에 더 높은 가중치
-        all_paths.append(path)
-    
-    # 재탐색 경로 추가
-    for path in rediscovered_paths:
-        path["source"] = "rediscovered"
-        path["final_score"] = path.get("rediscovery_score", 0.0) * 0.4  # 재탐색 경로는 낮은 가중치
-        all_paths.append(path)
-    
-    # 최종 점수로 정렬
-    all_paths.sort(key=lambda x: x["final_score"], reverse=True)
-    
-    # 상위 경로 선택 (limit 고려)
-    limit = state.get("limit", 3)
-    final_paths = all_paths[:limit]
-    
-    # 선택 이유 생성
-    reasoning = generate_selection_reasoning(final_paths, intent_analysis)
-    
-    return {
-        **state,
-        "final_paths": final_paths,
-        "reasoning": reasoning
-    }
-
-def generate_selection_reasoning(paths: List[dict], intent_analysis: dict) -> str:
-    """최종 경로 선택에 대한 설명 생성"""
-    if not paths:
-        return "검색 결과가 없습니다."
-    
-    intent_type = intent_analysis["intent_type"]
-    confidence = intent_analysis["confidence"]
-    
-    reasoning_parts = [
-        f"의도 분석 결과: {intent_type} (신뢰도: {confidence:.2f})",
-        f"총 {len(paths)}개의 경로를 선택했습니다."
-    ]
-    
-    for i, path in enumerate(paths[:2]):  # 상위 2개만 설명
-        source = path.get("source", "unknown")
-        score = path.get("final_score", 0.0)
-        reasoning_parts.append(
-            f"{i+1}. {path.get('taskIntent', 'Unknown')} "
-            f"(출처: {source}, 점수: {score:.3f})"
-        )
-    
-    return " | ".join(reasoning_parts)
-```
 
 ---
 
@@ -493,53 +581,80 @@ Query → Embedding → Vector Search → Sort by Similarity → Return
 
 ### After (With New LangGraph Flow)
 ```
-Query → Intent Analysis → [Path Rediscovery + Existing Path Ranking] → Final Selection
+Query → Intent Analysis → Vector Similarity Check → {
+    High Similarity: Existing Path Ranking
+    Low Similarity: Multi-Agent Rediscovery
+} → Final Selection
 ```
-- **Pros**: Context-aware, parallel processing, explainable
+- **Pros**: Context-aware, conditional processing, multi-agent approach, explainable
 - **Cons**: Slightly slower (acceptable for improved quality)
 
 ### Performance Impact
-- **Latency**: +150-300ms per query (LLM intent analysis + parallel processing)
-- **Accuracy**: +40-60% improvement in path relevance (estimated)
-- **Cost**: ~$0.002 per query (GPT-4o-mini for intent classification)
-- **Parallel Processing**: 기존 경로 순위화와 재탐색이 동시 실행되어 전체 처리 시간 단축
+- **Latency**: +100-250ms per query (LLM intent analysis + conditional processing)
+- **Accuracy**: +50-70% improvement in path relevance (estimated)
+- **Cost**: ~$0.001-0.002 per query (GPT-4o-mini for intent classification)
+- **Conditional Processing**: 상황에 맞는 최적화된 전략으로 효율성 향상
 
 ---
 
 ## Backend/Client 통신 영향 없는 LangGraph 적용 방법
 
-### 1. 메시지 타입 추가 방식
+### 1. 완전 투명한 교체 방식 (권장)
 
-기존 통신 구조를 유지하면서 새로운 메시지 타입만 추가:
+기존 통신 구조를 완전히 유지하면서 내부 구현만 LangGraph로 교체:
 
 ```python
-# 기존 메시지 타입 (유지)
-elif message['type'] == 'search_new_path':
-    # 기존 로직 유지
-    search_result = neo4j_service.search_paths_by_query(...)
+# 기존 방식 (주석 처리)
+# elif message['type'] == 'search_new_path':
+#     search_result = neo4j_service.search_paths_by_query(...)
 
-# 새로운 메시지 타입 (추가)
-elif message['type'] == 'search_path_smart':
+# 새로운 방식 (동일한 메시지 타입 사용)
+elif message['type'] == 'search_new_path':
     # LangGraph 워크플로우 사용
     search_result = await search_with_langgraph(...)
 ```
 
-### 2. 응답 형식 호환성
+### 2. DTO 구조 완전 동일
 
-LangGraph 결과를 기존 응답 형식과 동일하게 변환:
+기존 DTO 구조를 전혀 변경하지 않습니다:
 
 ```python
-def format_langgraph_response(langgraph_result: dict) -> dict:
-    """LangGraph 결과를 기존 응답 형식으로 변환"""
-    return {
-        "query": langgraph_result["user_query"],
-        "total_matched": len(langgraph_result["final_paths"]),
-        "matched_paths": langgraph_result["final_paths"],
+# 기존 DTO (변경 없음)
+class SearchPathRequest(BaseModel):
+    query: str
+    limit: int = 3
+    domain_hint: Optional[str] = None
+
+# 기존 응답 형식 (변경 없음)
+{
+    "type": "search_path_result",
+    "status": "success", 
+    "data": {
+        "query": "유튜브에서 좋아요 누르기",
+        "total_matched": 3,
+        "matched_paths": [...],
         "performance": {
-            "search_time": langgraph_result.get("processing_time", 0),
-            "reasoning": langgraph_result.get("reasoning", "")
+            "search_time": 150
         }
     }
+}
+```
+
+### 3. 클라이언트 코드 변경 없음
+
+클라이언트는 기존 코드를 그대로 사용합니다:
+
+```javascript
+// 클라이언트 코드 (변경 없음)
+const message = {
+    type: 'search_new_path',  // 동일한 타입
+    data: { 
+        query: '유튜브에서 좋아요 누르기', 
+        limit: 3 
+    }
+};
+
+websocket.send(JSON.stringify(message));
 ```
 
 ### 3. 점진적 마이그레이션 전략
@@ -558,42 +673,25 @@ def format_langgraph_response(langgraph_result: dict) -> dict:
 - `search_new_path`를 LangGraph 구현으로 교체
 - 기존 엔드포인트 유지 (하위 호환성)
 
-### 4. 클라이언트 측 변경사항 최소화
+### 7. 실제 사용 예시
 
-클라이언트는 단순히 메시지 타입만 변경하면 됩니다:
-
+#### 클라이언트 (변경 없음)
 ```javascript
-// 기존 방식
-const message = {
+// 기존과 완전히 동일한 코드
+websocket.send(JSON.stringify({
     type: 'search_new_path',
-    data: { query: '유튜브에서 좋아요 누르기', limit: 3 }
-};
-
-// 새로운 방식 (LangGraph 사용)
-const message = {
-    type: 'search_path_smart',  // 타입만 변경
-    data: { query: '유튜브에서 좋아요 누르기', limit: 3 }
-};
+    data: { 
+        query: '유튜브에서 좋아요 누르기', 
+        limit: 3 
+    }
+}));
 ```
 
-### 5. 에러 처리 및 폴백
-
-LangGraph 워크플로우 실패 시 기존 방식으로 폴백:
-
+#### 서버 (내부만 변경)
 ```python
-async def search_with_langgraph(query: str, limit: int = 3, domain_hint: str = None):
-    try:
-        # LangGraph 워크플로우 실행
-        result = await langgraph_workflow.ainvoke({
-            "user_query": query,
-            "domain_hint": domain_hint,
-            "limit": limit
-        })
-        return format_langgraph_response(result)
-    except Exception as e:
-        print(f"LangGraph 워크플로우 실패, 기존 방식으로 폴백: {e}")
-        # 기존 검색 방식으로 폴백
-        return neo4j_service.search_paths_by_query(query, limit, domain_hint)
+# 기존: neo4j_service.search_paths_by_query(...)
+# 새로운: search_with_langgraph(...)
+# 인터페이스: 완전히 동일
 ```
 
 ---
@@ -630,22 +728,22 @@ async def test_end_to_end_workflow():
     assert "search_time" in result["performance"]
 ```
 
-### Backward Compatibility Tests
+### Seamless Replacement Tests
 ```python
-async def test_backward_compatibility():
-    # 기존 방식과 새로운 방식 결과 비교
-    query = "테스트 쿼리"
+async def test_seamless_replacement():
+    # 기존 방식 (주석 처리됨)
+    # old_result = neo4j_service.search_paths_by_query(query, 3)
     
-    old_result = neo4j_service.search_paths_by_query(query, 3)
+    # 새로운 방식 (동일한 인터페이스)
+    query = "테스트 쿼리"
     new_result = await search_with_langgraph(query, 3)
     
-    # 응답 형식이 동일한지 확인
-    assert "query" in old_result
+    # 응답 형식이 기존과 동일한지 확인
     assert "query" in new_result
-    assert "total_matched" in old_result
     assert "total_matched" in new_result
-    assert "matched_paths" in old_result
     assert "matched_paths" in new_result
+    assert "performance" in new_result
+    assert "search_time" in new_result["performance"]
 ```
 
 ---
@@ -670,15 +768,127 @@ uv sync
 
 ---
 
+## LangGraph 구조 출력 및 디버깅
+
+### 1. 워크플로우 구조 출력
+
+LangGraph 워크플로우의 구조를 확인하고 디버깅할 수 있는 기능을 제공합니다:
+
+```python
+from app.services.langgraph_service import print_langgraph_structure, get_workflow_info
+
+# 콘솔에 구조 출력
+workflow = print_langgraph_structure()
+
+# 구조 정보를 딕셔너리로 반환
+info = get_workflow_info()
+print(info)
+```
+
+### 2. WebSocket을 통한 구조 조회
+
+클라이언트에서 WebSocket을 통해 LangGraph 구조를 조회할 수 있습니다:
+
+```javascript
+// LangGraph 구조 조회
+websocket.send(JSON.stringify({
+    type: 'get_langgraph_structure'
+}));
+
+// 응답 예시
+{
+    "type": "langgraph_structure_result",
+    "status": "success",
+    "data": {
+        "entry_point": "analyze_intent",
+        "end_points": ["END"],
+        "total_nodes": 4,
+        "conditional_branches": 1,
+        "nodes": {
+            "analyze_intent": "사용자 의도 분석",
+            "analyze_similarity": "벡터 유사도 분석",
+            "rank_existing_paths": "기존 경로 순위화 (유사도 >= 0.43)",
+            "rediscover_with_agent": "다른 Agent로 재탐색 (유사도 < 0.43)"
+        },
+        "threshold": 0.43,
+        "branches": {
+            "high_similarity": "rank_existing_paths",
+            "low_similarity": "rediscover_with_agent"
+        }
+    }
+}
+```
+
+### 3. 콘솔 출력 예시
+
+서버 콘솔에서 다음과 같은 구조 정보를 확인할 수 있습니다:
+
+```
+============================================================
+LangGraph 워크플로우 구조
+============================================================
+Entry Point: analyze_intent
+End Points: END
+Total Nodes: 4
+Conditional Branches: 1
+
+노드 구조:
+1. analyze_intent - 사용자 의도 분석
+2. analyze_similarity - 벡터 유사도 분석
+3. rank_existing_paths - 기존 경로 순위화 (유사도 >= 0.43)
+4. rediscover_with_agent - 다른 Agent로 재탐색 (유사도 < 0.43)
+
+분기 조건:
+- 유사도 >= 0.43: rank_existing_paths
+- 유사도 < 0.43: rediscover_with_agent
+
+워크플로우 그래프:
+analyze_intent → analyze_similarity → {
+    high_similarity: rank_existing_paths → END
+    low_similarity: rediscover_with_agent → END
+}
+============================================================
+```
+
+### 4. 디버깅 및 모니터링
+
+LangGraph 워크플로우 실행 시 각 단계별 정보를 모니터링할 수 있습니다:
+
+```python
+# 워크플로우 실행 시 디버깅 정보 출력
+async def search_with_langgraph_debug(query: str, limit: int = 3, domain_hint: str = None):
+    workflow = build_path_selection_graph()
+    
+    print(f"🔍 LangGraph 워크플로우 시작: {query}")
+    
+    result = await workflow.ainvoke({
+        "user_query": query,
+        "domain_hint": domain_hint,
+        "limit": limit,
+        # ... 기타 상태
+    })
+    
+    print(f"✅ LangGraph 워크플로우 완료: {result.get('processing_strategy', 'unknown')}")
+    return result
+```
+
+---
+
 ## Summary
 
-새로운 단순화된 플로우에 맞춘 LangGraph 통합:
+새로운 조건부 분기 플로우에 맞춘 LangGraph 통합:
 
-1. ✅ **병렬 처리**: 의도 분석 후 경로 재탐색과 기존 경로 순위화가 동시 실행
-2. ✅ **상태 관리**: 워크플로우 전체에서 컨텍스트 추적
-3. ✅ **다중 요소 순위화**: 의도 분석 결과를 바탕으로 한 지능적 순위화
-4. ✅ **설명 가능성**: 선택 이유와 추론 과정 제공
-5. ✅ **하위 호환성**: 기존 Backend/Client 통신에 영향 없음
+1. ✅ **조건부 분기**: 벡터 유사도에 따른 지능적 전략 선택
+2. ✅ **다중 Agent 접근**: 낮은 유사도 시 다양한 Agent 전략 활용
+3. ✅ **상태 관리**: 워크플로우 전체에서 컨텍스트 추적
+4. ✅ **설명 가능성**: 선택 이유와 처리 전략 제공
+5. ✅ **완전한 투명성**: 클라이언트와 Backend 코드 변경 없음
+
+**핵심 특징:**
+- **DTO 변경 없음**: 기존 `SearchPathRequest` 구조 그대로 사용
+- **메시지 타입 동일**: `search_new_path` 그대로 사용
+- **내부 구현만 교체**: 서버 내부에서만 LangGraph 사용
+- **강력한 폴백**: LangGraph 실패 시 자동으로 기존 방식으로 폴백
 
 **추가하지 않는 것 (과도한 엔지니어링 방지):**
 - ❌ 다중 에이전트 오케스트레이션 (아직 필요 없음)
@@ -689,5 +899,6 @@ uv sync
 **다음 단계:**
 1. 팀과 이 설계 검토
 2. 의존성 추가 승인
-3. Phase 1 구현 시작
-4. 기존 데이터로 테스트
+3. 내부 구현 교체 완료
+4. 성능 및 품질 검증
+

@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -11,6 +12,57 @@ from app.models.step import PathSubmission
 load_dotenv(find_dotenv())
 
 app = FastAPI(title="Vowser MCP Server - WebSocket Only")
+
+async def increment_has_step_weight(search_result: dict):
+    """
+    백그라운드에서 첫 번째 경로의 HAS_STEP 가중치를 +1 증가
+    """
+    try:
+        matched_paths = search_result.get("matched_paths", [])
+        if not matched_paths:
+            return
+            
+        top_path = matched_paths[0]
+        domain = top_path.get("domain")
+        task_intent = top_path.get("taskIntent")
+        
+        if not domain or not task_intent:
+            print("HAS_STEP 업데이트 건너뜀: domain 또는 taskIntent 누락")
+            return
+            
+        if not neo4j_service.graph:
+            print("Neo4j graph 연결 없음: HAS_STEP 업데이트 건너뜀")
+            return
+            
+        # Neo4j 쿼리 실행
+        neo4j_service.graph.query(
+            """
+            MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP {taskIntent: $taskIntent}]->(:STEP)
+            SET rel.weight = coalesce(rel.weight, 0) + 1,
+                rel.lastUpdated = datetime()
+            RETURN rel.weight as newWeight
+            """,
+            {"domain": domain, "taskIntent": task_intent}
+        )
+        
+        print(f"HAS_STEP 가중치 증가: domain={domain}, taskIntent={task_intent}")
+        
+    except Exception as e:
+        print(f"HAS_STEP weight 증가 실패: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 실행되는 이벤트"""
+    print("Vowser MCP Server 시작 중...")
+    
+    # LangGraph 워크플로우 사전 초기화
+    try:
+        from app.services.langgraph_service import initialize_langgraph
+        initialize_langgraph()
+    except Exception as e:
+        print(f"LangGraph 초기화 실패 (폴백 모드로 동작): {e}")
+    
+    print("서버 시작 완료")
 
 @app.get("/")
 def read_root():
@@ -109,7 +161,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "migration_guide": "See docs/DTO_API_DOCUMENTATION.md"
                         }
                     }
-
+                    '''
                 elif message['type'] == 'search_new_path':
                     # 자연어 경로 검색 (새 구조)
                     try:
@@ -141,6 +193,87 @@ async def websocket_endpoint(websocket: WebSocket):
                             "data": {
                                 "message": "경로 검색 실패",
                                 "query": search_request.query if 'search_request' in locals() else "unknown"
+                            }
+                        }
+                    '''
+                
+                elif message['type'] == 'search_new_path':
+                    # LangGraph를 사용한 지능적 경로 검색
+                    try:
+                        search_request = SearchPathRequest(**message['data'])
+                        print(f"[SMART] LangGraph 경로 검색 요청: {search_request.query}")
+
+                        from app.services.langgraph_service import search_with_langgraph
+                        
+                        search_result = await search_with_langgraph(
+                            query=search_request.query,
+                            limit=search_request.limit,
+                            domain_hint=search_request.domain_hint
+                        )
+                        print(f"[SMART] LangGraph 검색 결과: {search_result}")
+                        
+                        response = {
+                            "type": "search_path_result",
+                            "status": "success",
+                            "data": search_result
+                        }
+                        
+                        # 응답 후 백그라운드에서 HAS_STEP 가중치 증가
+                        asyncio.create_task(increment_has_step_weight(search_result))
+                    except Exception as e:
+                        print(f"[SMART] LangGraph search_path 오류: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        
+                        # LangGraph 실패 시 기존 방식으로 폴백
+                        try:
+                            search_request = SearchPathRequest(**message['data'])
+                            fallback_result = neo4j_service.search_paths_by_query(
+                                search_request.query,
+                                search_request.limit,
+                                search_request.domain_hint
+                            )
+                            response = {
+                                "type": "search_path_result",
+                                "status": "success",
+                                "data": fallback_result
+                            }
+                            print(f"[SMART] 폴백 검색 성공")
+                        except Exception as fallback_error:
+                            print(f"[SMART] 폴백 검색도 실패: {fallback_error}")
+                            response = {
+                                "type": "search_path_result",
+                                "status": "error",
+                                "data": {
+                                    "message": "LangGraph 및 폴백 검색 모두 실패",
+                                    "query": message['data'].get('query', 'unknown'),
+                                    "error": str(e)
+                                }
+                            }
+
+                elif message['type'] == 'get_langgraph_structure':
+                    # LangGraph 워크플로우 구조 정보 반환
+                    try:
+                        from app.services.langgraph_service import get_workflow_info, print_langgraph_structure
+                        
+                        # 콘솔에 구조 출력
+                        print_langgraph_structure()
+                        
+                        # 클라이언트에 구조 정보 반환
+                        workflow_info = get_workflow_info()
+                        
+                        response = {
+                            "type": "langgraph_structure_result",
+                            "status": "success",
+                            "data": workflow_info
+                        }
+                    except Exception as e:
+                        print(f"LangGraph 구조 정보 조회 실패: {e}")
+                        response = {
+                            "type": "langgraph_structure_result",
+                            "status": "error",
+                            "data": {
+                                "message": f"LangGraph 구조 정보 조회 실패: {str(e)}"
                             }
                         }
 
