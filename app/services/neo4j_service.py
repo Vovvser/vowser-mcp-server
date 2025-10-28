@@ -46,10 +46,10 @@ def extract_domain(url: str) -> str:
     return parsed.netloc.replace('www.', '')
 
 
-def create_step_id(url: str, selectors: List[str], action: str) -> str:
-    """STEP 노드의 고유 ID 생성"""
+def create_step_id(session_id: str, url: str, selectors: List[str], action: str) -> str:
+    """STEP 노드의 고유 ID 생성 (세션별로 고유)"""
     primary_selector = selectors[0] if selectors else 'no_selector'
-    key = f"{url}_{primary_selector}_{action}"
+    key = f"{session_id}_{url}_{primary_selector}_{action}"
     return hashlib.md5(key.encode()).hexdigest()
 
 
@@ -108,8 +108,8 @@ def save_path_to_neo4j(path_submission: PathSubmission):
         intent_embedding = generate_embedding(task_intent)
 
         for order, step_data in enumerate(path_submission.steps):
-            # STEP ID 생성
-            step_id = create_step_id(step_data.url, step_data.selectors, step_data.action)
+            # STEP ID 생성 (세션 ID를 포함하여 경로별로 고유하게)
+            step_id = create_step_id(path_submission.sessionId, step_data.url, step_data.selectors, step_data.action)
 
             # STEP 임베딩 생성
             embedding_text = f"{step_data.description} {' '.join(step_data.textLabels)}"
@@ -171,12 +171,15 @@ def save_path_to_neo4j(path_submission: PathSubmission):
                 create_root_step_rel = """
                 MATCH (r:ROOT {domain: $domain})
                 MATCH (s:STEP {stepId: $stepId})
-                MERGE (r)-[rel:HAS_STEP]->(s)
-                SET rel.weight = coalesce(rel.weight, 0) + 1,
+                MERGE (r)-[rel:HAS_STEP {taskIntent: $taskIntent}]->(s)
+                ON CREATE SET
+                    rel.weight = 1,
                     rel.order = $order,
-                    rel.taskIntent = $taskIntent,
                     rel.intentEmbedding = $intentEmbedding,
-                    rel.createdAt = coalesce(rel.createdAt, datetime()),
+                    rel.createdAt = datetime(),
+                    rel.lastUpdated = datetime()
+                ON MATCH SET
+                    rel.weight = rel.weight + 1,
                     rel.lastUpdated = datetime()
                 """
 
