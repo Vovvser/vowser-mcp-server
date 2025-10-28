@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -12,7 +13,43 @@ load_dotenv(find_dotenv())
 
 app = FastAPI(title="Vowser MCP Server - WebSocket Only")
 
-# 서버 시작 시 LangGraph 워크플로우 미리 초기화
+async def increment_has_step_weight(search_result: dict):
+    """
+    백그라운드에서 첫 번째 경로의 HAS_STEP 가중치를 +1 증가
+    """
+    try:
+        matched_paths = search_result.get("matched_paths", [])
+        if not matched_paths:
+            return
+            
+        top_path = matched_paths[0]
+        domain = top_path.get("domain")
+        task_intent = top_path.get("taskIntent")
+        
+        if not domain or not task_intent:
+            print("HAS_STEP 업데이트 건너뜀: domain 또는 taskIntent 누락")
+            return
+            
+        if not neo4j_service.graph:
+            print("Neo4j graph 연결 없음: HAS_STEP 업데이트 건너뜀")
+            return
+            
+        # Neo4j 쿼리 실행
+        neo4j_service.graph.query(
+            """
+            MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP {taskIntent: $taskIntent}]->(:STEP)
+            SET rel.weight = coalesce(rel.weight, 0) + 1,
+                rel.lastUpdated = datetime()
+            RETURN rel.weight as newWeight
+            """,
+            {"domain": domain, "taskIntent": task_intent}
+        )
+        
+        print(f"HAS_STEP 가중치 증가: domain={domain}, taskIntent={task_intent}")
+        
+    except Exception as e:
+        print(f"HAS_STEP weight 증가 실패: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행되는 이벤트"""
@@ -180,6 +217,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             "status": "success",
                             "data": search_result
                         }
+                        
+                        # 응답 후 백그라운드에서 HAS_STEP 가중치 증가
+                        asyncio.create_task(increment_has_step_weight(search_result))
                     except Exception as e:
                         print(f"[SMART] LangGraph search_path 오류: {e}")
                         import traceback
