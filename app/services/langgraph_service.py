@@ -32,6 +32,7 @@ class PathSelectionState(TypedDict):
     processing_strategy: str  # 사용된 처리 전략
     reasoning: str
     limit: int  # 반환할 경로 수
+    cached_search_results: Optional[dict]  # 캐시된 검색 결과 (중복 검색 방지)
     
 # Util 함수
 def parse_llm_json(text: str) -> dict:
@@ -184,15 +185,17 @@ async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionS
     기존 데이터베이스에서 벡터 유사도 분석하여 분기 결정
     
     분석 과정:
-    1. 기존 검색으로 최대 유사도 점수 확인
+    1. 기존 검색으로 최대 유사도 점수 확인 (limit만큼 검색하여 캐싱)
     2. 임계값과 비교하여 분기 전략 결정
     3. 다음 단계를 위한 컨텍스트 제공
+    
+    최적화: rank_existing_paths에서 재사용할 수 있도록 검색 결과 캐싱
     """
     
-    # 기존 검색으로 최대 유사도 확인
+    # 기존 검색으로 결과 확인 (요청된 limit만큼 검색하여 캐싱)
     existing_results = neo4j_service.search_paths_by_query(
         state["user_query"],
-        limit=1,  # 최대 유사도만 확인
+        limit=state.get("limit", 3),  # 요청된 개수만큼 검색
         domain_hint=state["domain_hint"]
     )
     
@@ -211,7 +214,8 @@ async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionS
     output_state = {
         **state,
         "max_similarity": max_similarity,
-        "similarity_threshold": similarity_threshold
+        "similarity_threshold": similarity_threshold,
+        "cached_search_results": existing_results  # 검색 결과 캐싱
     }
     
     return output_state
@@ -245,27 +249,25 @@ async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
     높은 유사도가 확인된 경우 기존 경로들을 순위화
     
     높은 유사도일 때는 의도 분석 없이 기존 경로만 반환
+    
+    최적화: analyze_vector_similarity에서 캐싱된 검색 결과 재사용
     """
     
-    # 기존 검색 로직 사용 (의도 분석 없이 단순 반환)
-    existing_results = neo4j_service.search_paths_by_query(
-        state["user_query"],
-        limit=state.get("limit", 3),  # 요청된 개수만큼만 가져오기
-        domain_hint=state["domain_hint"]
-    )
+    # 캐시된 검색 결과 사용 (중복 Neo4j 쿼리 방지)
+    existing_results = state.get("cached_search_results")
     
     if not existing_results:
-        print("❌ 기존 경로가 없음")
+        print("❌ 캐시된 검색 결과가 없음")
         output_state = {
             **state,
             "selected_paths": [],
             "processing_strategy": "rank_existing_paths",
-            "reasoning": "기존 경로가 없어서 빈 결과 반환"
+            "reasoning": "캐시된 검색 결과가 없어서 빈 결과 반환"
         }
         
         return output_state
     
-    print(f"📊 발견된 경로 수: {len(existing_results['matched_paths'])}")
+    print(f"📊 캐시된 경로 사용: {len(existing_results['matched_paths'])}개")
     
     # 높은 유사도일 때는 기존 경로를 그대로 사용 (의도 분석 없이)
     selected_paths = existing_results["matched_paths"]
@@ -278,7 +280,7 @@ async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
         **state,
         "selected_paths": selected_paths,
         "processing_strategy": "rank_existing_paths",
-        "reasoning": f"높은 유사도({state['max_similarity']:.3f})로 기존 경로 그대로 사용"
+        "reasoning": f"높은 유사도({state['max_similarity']:.3f})로 캐시된 경로 사용 (중복 검색 제거)"
     }
     
     print(f"✅ 최종 선택된 경로 수: {len(output_state['selected_paths'])}")
@@ -618,7 +620,8 @@ async def search_with_langgraph(
             "max_similarity": 0.0,
             "selected_paths": [],
             "processing_strategy": "",
-            "reasoning": ""
+            "reasoning": "",
+            "cached_search_results": None  # 캐시 초기화
         }
         
         print("🔄 워크플로우 실행 중...")
