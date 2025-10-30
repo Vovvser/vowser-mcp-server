@@ -217,14 +217,11 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
     import asyncio
     import time
     
-    print("⚡ 병렬 분석 시작: similarity + intent")
     start_time = time.time()
     
     # 병렬 실행: 유사도 분석 + 의도 분석
     async def similarity_task():
         """유사도 분석 태스크 (non-blocking)"""
-        task_start = time.time()
-        
         # Neo4j 검색을 별도 스레드에서 실행 (blocking → non-blocking)
         loop = asyncio.get_event_loop()
         existing_results = await loop.run_in_executor(
@@ -239,13 +236,6 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
         max_similarity = 0.0
         if existing_results and existing_results["matched_paths"]:
             max_similarity = existing_results["matched_paths"][0].get("relevance_score", 0.0)
-            print(f"📊 [Similarity] 발견된 경로: {len(existing_results['matched_paths'])}개")
-            print(f"📊 [Similarity] 최대 유사도: {max_similarity:.3f}")
-        else:
-            print("📊 [Similarity] 기존 경로 없음")
-        
-        elapsed = int((time.time() - task_start) * 1000)
-        print(f"⏱️ [Similarity] 완료: {elapsed}ms")
         
         return {
             "max_similarity": max_similarity,
@@ -255,8 +245,6 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
     
     async def intent_task():
         """의도 분석 태스크"""
-        task_start = time.time()
-        
         # analyze_user_intent 로직 실행
         use_llm = bool(os.getenv("OPENAI_API_KEY"))
         
@@ -269,8 +257,6 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
                 "reasoning": "Heuristic fallback without LLM",
                 "keywords": [state["user_query"]]
             }
-            elapsed = int((time.time() - task_start) * 1000)
-            print(f"⏱️ [Intent] 완료 (휴리스틱): {elapsed}ms")
         else:
             llm = ChatOpenAI(
                 model="gpt-4o-mini", 
@@ -332,9 +318,8 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
                     timeout=12.0
                 )
                 result = parse_llm_json(response.content)
-                elapsed = int((time.time() - task_start) * 1000)
-                print(f"⏱️ [Intent] 완료 (LLM): {elapsed}ms")
             except asyncio.TimeoutError:
+                print("⚠️ LLM 타임아웃, 폴백 사용")
                 result = {
                     "intent_type": "information_seeking",
                     "domain_preference": None,
@@ -343,9 +328,8 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
                     "reasoning": "LLM 타임아웃으로 인한 폴백",
                     "keywords": [state["user_query"]]
                 }
-                elapsed = int((time.time() - task_start) * 1000)
-                print(f"⏱️ [Intent] 타임아웃: {elapsed}ms")
             except Exception as e:
+                print(f"⚠️ LLM 실패: {str(e)[:50]}...")
                 result = {
                     "intent_type": "information_seeking",
                     "domain_preference": None,
@@ -354,8 +338,6 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
                     "reasoning": f"LLM 실패로 인한 폴백: {str(e)}",
                     "keywords": [state["user_query"]]
                 }
-                elapsed = int((time.time() - task_start) * 1000)
-                print(f"⏱️ [Intent] 실패: {elapsed}ms")
         
         # embedding 생성 (non-blocking)
         loop = asyncio.get_event_loop()
@@ -374,9 +356,6 @@ async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> P
         similarity_task(),
         intent_task()
     )
-    
-    parallel_time = int((time.time() - start_time) * 1000)
-    print(f"⚡ 병렬 분석 완료: {parallel_time}ms")
     
     # 결과 병합
     output_state = {
@@ -399,16 +378,10 @@ def should_use_rediscovery_agent(state: PathSelectionState) -> str:
     max_similarity = state["max_similarity"]
     threshold = state["similarity_threshold"]
     
-    print(f"🔀 분기 결정: 유사도 {max_similarity:.3f} vs 임계값 {threshold}")
-    
     if max_similarity >= threshold:
-        decision = "high_similarity"
-        print(f"✅ 높은 유사도 → rank_existing_paths")
+        return "high_similarity"
     else:
-        decision = "low_similarity"
-        print(f"⚠️  낮은 유사도 → analyze_intent")
-    
-    return decision
+        return "low_similarity"
 
 
 async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
@@ -424,33 +397,23 @@ async def rank_existing_paths(state: PathSelectionState) -> PathSelectionState:
     existing_results = state.get("cached_search_results")
     
     if not existing_results:
-        print("❌ 캐시된 검색 결과가 없음")
-        output_state = {
+        return {
             **state,
             "selected_paths": [],
             "processing_strategy": "rank_existing_paths",
             "reasoning": "캐시된 검색 결과가 없어서 빈 결과 반환"
         }
-        
-        return output_state
-    
-    print(f"📊 캐시된 경로 사용: {len(existing_results['matched_paths'])}개")
     
     # 높은 유사도일 때는 기존 경로를 그대로 사용 (의도 분석 없이)
     selected_paths = existing_results["matched_paths"]
-    
-    # 각 경로에 기본 점수 정보 추가
-    for i, path in enumerate(selected_paths):
-        print(f"  {i+1}. {path.get('taskIntent', 'Unknown')} - 점수: {path.get('relevance_score', 0):.3f}")
     
     output_state = {
         **state,
         "selected_paths": selected_paths,
         "processing_strategy": "rank_existing_paths",
-        "reasoning": f"높은 유사도({state['max_similarity']:.3f})로 캐시된 경로 사용 (중복 검색 제거)"
+        "reasoning": f"높은 유사도({state['max_similarity']:.3f})로 캐시된 경로 사용"
     }
     
-    print(f"✅ 최종 선택된 경로 수: {len(output_state['selected_paths'])}")
     return output_state
 
 
@@ -462,17 +425,11 @@ async def rediscover_with_different_agent(state: PathSelectionState) -> PathSele
     1. 키워드 기반 검색 Agent (단일 Agent로 최적화)
     """
     
-    intent_analysis = state["intent_analysis"]
-    print(f"🔍 낮은 유사도로 다른 Agent 전략 사용 (최대 유사도: {state['max_similarity']:.3f})")
-    print(f"🔑 추출된 키워드: {intent_analysis.get('keywords', [])}")
-    
     rediscovered_paths = []
     
     # Agent 1: 키워드 기반 검색 Agent (단일 Agent로 최적화)
-    print("🤖 키워드 기반 검색 Agent 실행")
     keyword_agent_paths = await keyword_based_search_agent(state)
     rediscovered_paths.extend(keyword_agent_paths)
-    print(f"📊 총 재탐색된 경로: {len(rediscovered_paths)}개")
     
     # 중복 제거 (간단한 방식)
     unique_paths = []
@@ -482,8 +439,6 @@ async def rediscover_with_different_agent(state: PathSelectionState) -> PathSele
         if intent_key not in seen_intents:
             seen_intents.add(intent_key)
             unique_paths.append(path)
-    
-    print(f"📊 중복 제거 후: {len(unique_paths)}개")
     
     # 점수 재계산 (간단한 방식)
     scored_paths = []
@@ -510,7 +465,6 @@ async def rediscover_with_different_agent(state: PathSelectionState) -> PathSele
         "reasoning": f"낮은 유사도({state['max_similarity']:.3f})로 키워드 기반 Agent 사용"
     }
     
-    print(f"✅ 최종 선택된 경로 수: {len(output_state['selected_paths'])}")
     return output_state
 
 
@@ -547,7 +501,6 @@ async def keyword_based_search_agent(state: PathSelectionState) -> List[dict]:
                 return paths
             return []
         except Exception as e:
-            print(f"⚠️ 키워드 검색 실패 ({keyword}): {e}")
             return []
     
     # 최대 2개 키워드를 병렬로 검색
@@ -559,7 +512,6 @@ async def keyword_based_search_agent(state: PathSelectionState) -> List[dict]:
     for result_list in results_lists:
         paths.extend(result_list)
     
-    print(f"🔑 키워드 기반 병렬 검색 완료: {len(paths)}개 경로")
     return paths
 
 
@@ -583,9 +535,8 @@ async def cross_domain_search_agent(state: PathSelectionState) -> List[dict]:
                 path["agent_source"] = "cross_domain"
                 paths.append(path)
     except Exception as e:
-        print(f"⚠️ 크로스 도메인 검색 실패: {e}")
+        pass
     
-    print(f"🌐 크로스 도메인 검색 완료: {len(paths)}개 경로")
     return paths
 
 # ============================================================================
@@ -598,11 +549,9 @@ def extract_and_expand_keywords(query: str, intent_analysis: dict) -> List[str]:
     llm_keywords = intent_analysis.get("keywords", [])
     
     if llm_keywords and len(llm_keywords) > 0:
-        print(f"🔑 LLM 추출 키워드: {llm_keywords}")
         return llm_keywords[:4]  # 최대 4개로 제한
     
     # LLM 키워드가 없으면 원본 쿼리 사용
-    print(f"🔑 LLM 키워드 없음, 원본 쿼리 사용: {query}")
     return [query]
 
 
@@ -646,13 +595,7 @@ def get_or_build_workflow():
     global _langgraph_workflow, _workflow_initialized
     
     if not _workflow_initialized:
-        print("LangGraph 워크플로우 초기화 중...")
-        start_time = time.time()
-        
         _langgraph_workflow = build_path_selection_graph()
-        
-        init_time = int((time.time() - start_time) * 1000)
-        print(f"LangGraph 워크플로우 초기화 완료 ({init_time}ms)")
         _workflow_initialized = True
     
     return _langgraph_workflow
@@ -660,9 +603,7 @@ def get_or_build_workflow():
 
 def initialize_langgraph():
     """서버 시작 시 LangGraph 워크플로우 미리 초기화"""
-    print("LangGraph 워크플로우 사전 초기화...")
     get_or_build_workflow()
-    print("LangGraph 워크플로우 사전 초기화 완료")
 
 
 # ============================================================================
@@ -796,9 +737,6 @@ async def search_with_langgraph(
     Returns:
         dict: 기존 응답 형식과 호환되는 검색 결과
     """
-    print("🚀 LangGraph 워크플로우 시작")
-    print(f"📝 쿼리: {query}, 제한: {limit}, 도메인 힌트: {domain_hint}")
-    
     start_time = time.time()
     
     try:
@@ -819,13 +757,9 @@ async def search_with_langgraph(
             "cached_search_results": None  # 캐시 초기화
         }
         
-        print("🔄 워크플로우 실행 중...")
         result = await workflow.ainvoke(initial_state)
         
         processing_time = int((time.time() - start_time) * 1000)
-        
-        print(f"⏱️ 총 처리 시간: {processing_time}ms")
-        print(f"📊 발견된 경로 수: {len(result.get('selected_paths', []))}")
         
         # 기존 응답 형식으로 변환
         response = {
@@ -840,22 +774,18 @@ async def search_with_langgraph(
             }
         }
         
-        print("✅ LangGraph 워크플로우 완료")
+        print(f"✓ LangGraph 검색 완료: {len(result['selected_paths'])}개 경로 ({processing_time}ms)")
         return response
         
     except Exception as e:
-        print(f"❌ LangGraph 워크플로우 실패: {e}")
-        import traceback
-        traceback.print_exc()
-        print("🔄 기존 방식으로 폴백...")
+        print(f"✗ LangGraph 실패: {str(e)[:100]}...")
         
         # 기존 검색 방식으로 폴백
         fallback_result = neo4j_service.search_paths_by_query(query, limit, domain_hint)
         if fallback_result:
-            fallback_result["performance"]["reasoning"] = f"LangGraph 실패로 폴백: {str(e)}"
+            fallback_result["performance"]["reasoning"] = f"LangGraph 실패로 폴백"
             fallback_result["performance"]["strategy"] = "fallback_traditional_search"
         
-        print("="*60)
         return fallback_result
 
 
