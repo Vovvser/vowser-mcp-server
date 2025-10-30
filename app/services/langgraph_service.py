@@ -352,28 +352,47 @@ async def rediscover_with_different_agent(state: PathSelectionState) -> PathSele
 # ============================================================================
 
 async def keyword_based_search_agent(state: PathSelectionState) -> List[dict]:
-    """키워드 기반 검색 Agent (최적화)"""
+    """키워드 기반 검색 Agent (최적화 - 병렬 검색)"""
+    import asyncio
+    
     # 키워드 추출 및 확장
     keywords = extract_and_expand_keywords(state["user_query"], state["intent_analysis"])
     
-    paths = []
-    # 병렬 처리를 위해 최대 2개 키워드만 사용하고 각각 1개씩만 가져오기
-    for keyword in keywords[:2]:  # 최대 2개 키워드로 제한
+    # 병렬 검색을 위한 비동기 함수
+    async def search_keyword(keyword: str) -> List[dict]:
         try:
-            results = neo4j_service.search_paths_by_query(
-                keyword,
-                limit=1,  # 각 키워드당 1개만 가져오기
-                domain_hint=None  # 도메인 제한 없이 검색
+            # Neo4j 검색을 별도 스레드에서 실행 (blocking -> non-blocking)
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: neo4j_service.search_paths_by_query(
+                    keyword,
+                    limit=1,  # 각 키워드당 1개만 가져오기
+                    domain_hint=None  # 도메인 제한 없이 검색
+                )
             )
+            
             if results and results["matched_paths"]:
+                paths = []
                 for path in results["matched_paths"]:
                     path["agent_source"] = "keyword_based"
                     paths.append(path)
+                return paths
+            return []
         except Exception as e:
             print(f"⚠️ 키워드 검색 실패 ({keyword}): {e}")
-            continue
+            return []
     
-    print(f"🔑 키워드 기반 검색 완료: {len(paths)}개 경로")
+    # 최대 2개 키워드를 병렬로 검색
+    search_tasks = [search_keyword(keyword) for keyword in keywords[:2]]
+    results_lists = await asyncio.gather(*search_tasks)
+    
+    # 결과 병합
+    paths = []
+    for result_list in results_lists:
+        paths.extend(result_list)
+    
+    print(f"🔑 키워드 기반 병렬 검색 완료: {len(paths)}개 경로")
     return paths
 
 
