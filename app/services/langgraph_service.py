@@ -106,7 +106,12 @@ async def analyze_user_intent(state: PathSelectionState) -> PathSelectionState:
             "keywords": [state["user_query"]]  # 기본적으로 원본 쿼리 사용
         }
     else:
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_retries=2)
+        llm = ChatOpenAI(
+            model="gpt-4o-mini", 
+            temperature=0, 
+            max_retries=2,
+            request_timeout=10.0  # 10초 타임아웃 설정
+        )
         
         prompt = f"""
         당신은 웹 자동화 서비스의 의도 분석 에이전트입니다.
@@ -157,9 +162,25 @@ async def analyze_user_intent(state: PathSelectionState) -> PathSelectionState:
 
         try:
             print("🤖 LLM 호출 중...")
-            response = await llm.ainvoke(prompt)
+            import asyncio
+            
+            # asyncio.wait_for로 타임아웃 설정 (12초 - LLM 자체 타임아웃 10초 + 여유 2초)
+            response = await asyncio.wait_for(
+                llm.ainvoke(prompt),
+                timeout=12.0
+            )
             print(f"📝 LLM 응답: {response.content}")
             result = parse_llm_json(response.content)
+        except asyncio.TimeoutError:
+            print(f"❌ LLM 호출 타임아웃 (12초)")
+            result = {
+                "intent_type": "information_seeking",
+                "domain_preference": None,
+                "complexity": "simple",
+                "confidence": 0.5,
+                "reasoning": "LLM 타임아웃으로 인한 폴백",
+                "keywords": [state["user_query"]]
+            }
         except Exception as e:
             print(f"❌ LLM 호출 실패: {e}")
             result = {
