@@ -264,28 +264,53 @@ def search_paths_by_query(
         # 2. taskIntent 임베딩 검색
         if domain_hint:
             intent_search_query = """
-            MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP]->(firstStep:STEP)
+            CALL db.index.vector.queryRelationships(
+            "intent_embeddings",
+            $topK,
+            $queryEmbedding
+            )
+            YIELD relationship AS rel
+            WITH rel
+            MATCH (r:ROOT {domain: $domain})-[rel]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
-            RETURN r.domain as domain,
-                   r.baseURL as baseURL,
-                   rel.taskIntent as taskIntent,
-                   rel.intentEmbedding as intentEmbedding,
-                   rel.weight as weight,
-                   firstStep.stepId as stepId
+            RETURN r.domain AS domain,
+                r.baseURL AS baseURL,
+                rel.taskIntent AS taskIntent,
+                rel.intentEmbedding AS intentEmbedding,
+                rel.weight AS weight,
+                firstStep.stepId AS stepId
+            LIMIT $limit;
             """
-            all_intents = graph.query(intent_search_query, {'domain': domain_hint})
+            all_intents = graph.query(intent_search_query, {
+                'domain': domain_hint,
+                'queryEmbedding': query_embedding,
+                'topK': limit * 5,
+                'limit': limit
+                })
         else:
             intent_search_query = """
-            MATCH (r:ROOT)-[rel:HAS_STEP]->(firstStep:STEP)
+            CALL db.index.vector.queryRelationships(
+            "intent_embeddings",
+            $topK,
+            $queryEmbedding
+            )
+            YIELD relationship AS rel
+            WITH rel
+            MATCH (r:ROOT)-[rel]->(firstStep:STEP)
             WHERE rel.intentEmbedding IS NOT NULL
-            RETURN r.domain as domain,
-                   r.baseURL as baseURL,
-                   rel.taskIntent as taskIntent,
-                   rel.intentEmbedding as intentEmbedding,
-                   rel.weight as weight,
-                   firstStep.stepId as stepId
+            RETURN r.domain AS domain,
+                r.baseURL AS baseURL,
+                rel.taskIntent AS taskIntent,
+                rel.intentEmbedding AS intentEmbedding,
+                rel.weight AS weight,
+                firstStep.stepId AS stepId
+            LIMIT $limit;
             """
-            all_intents = graph.query(intent_search_query)
+            all_intents = graph.query(intent_search_query, {
+                'queryEmbedding': query_embedding,
+                'topK': limit * 5,
+                'limit': limit
+                })
 
         # 3. Python에서 코사인 유사도 계산
         import numpy as np
