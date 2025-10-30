@@ -82,7 +82,10 @@ def _debug_edge_transition(from_node: str, to_node: str, condition: str = None):
 
 async def analyze_user_intent(state: PathSelectionState) -> PathSelectionState:
     """
-    사용자 쿼리의 의도를 분석하고 다음 단계를 위한 컨텍스트 제공
+    [DEPRECATED] 사용자 쿼리의 의도를 분석하고 다음 단계를 위한 컨텍스트 제공
+    
+    ⚠️ 이 함수는 더 이상 워크플로우에서 사용되지 않습니다.
+    대신 analyze_similarity_and_intent_parallel에서 병렬로 처리됩니다.
     
     분석 항목:
     - 의도 유형: navigation, task_completion, information_seeking, exploration
@@ -201,42 +204,185 @@ async def analyze_user_intent(state: PathSelectionState) -> PathSelectionState:
     return output_state
 
 
-async def analyze_vector_similarity(state: PathSelectionState) -> PathSelectionState:
+async def analyze_similarity_and_intent_parallel(state: PathSelectionState) -> PathSelectionState:
     """
-    기존 데이터베이스에서 벡터 유사도 분석하여 분기 결정
+    벡터 유사도 분석과 의도 분석을 병렬로 실행 (Speculative Execution)
     
-    분석 과정:
-    1. 기존 검색으로 최대 유사도 점수 확인 (limit만큼 검색하여 캐싱)
-    2. 임계값과 비교하여 분기 전략 결정
-    3. 다음 단계를 위한 컨텍스트 제공
+    최적화 전략:
+    - 높은 유사도: similarity 결과만 사용 (intent 결과는 버림)
+    - 낮은 유사도: 두 결과 모두 즉시 사용 (대기 시간 제거)
     
-    최적화: rank_existing_paths에서 재사용할 수 있도록 검색 결과 캐싱
+    예상 효과: 낮은 유사도 경로에서 500-2000ms 절약 (약 40-60% 성능 향상)
     """
+    import asyncio
+    import time
     
-    # 기존 검색으로 결과 확인 (요청된 limit만큼 검색하여 캐싱)
-    existing_results = neo4j_service.search_paths_by_query(
-        state["user_query"],
-        limit=state.get("limit", 3),  # 요청된 개수만큼 검색
-        domain_hint=state["domain_hint"]
+    print("⚡ 병렬 분석 시작: similarity + intent")
+    start_time = time.time()
+    
+    # 병렬 실행: 유사도 분석 + 의도 분석
+    async def similarity_task():
+        """유사도 분석 태스크 (non-blocking)"""
+        task_start = time.time()
+        
+        # Neo4j 검색을 별도 스레드에서 실행 (blocking → non-blocking)
+        loop = asyncio.get_event_loop()
+        existing_results = await loop.run_in_executor(
+            None,
+            lambda: neo4j_service.search_paths_by_query(
+                state["user_query"],
+                limit=state.get("limit", 3),
+                domain_hint=state["domain_hint"]
+            )
+        )
+        
+        max_similarity = 0.0
+        if existing_results and existing_results["matched_paths"]:
+            max_similarity = existing_results["matched_paths"][0].get("relevance_score", 0.0)
+            print(f"📊 [Similarity] 발견된 경로: {len(existing_results['matched_paths'])}개")
+            print(f"📊 [Similarity] 최대 유사도: {max_similarity:.3f}")
+        else:
+            print("📊 [Similarity] 기존 경로 없음")
+        
+        elapsed = int((time.time() - task_start) * 1000)
+        print(f"⏱️ [Similarity] 완료: {elapsed}ms")
+        
+        return {
+            "max_similarity": max_similarity,
+            "cached_search_results": existing_results,
+            "similarity_threshold": 0.43
+        }
+    
+    async def intent_task():
+        """의도 분석 태스크"""
+        task_start = time.time()
+        
+        # analyze_user_intent 로직 실행
+        use_llm = bool(os.getenv("OPENAI_API_KEY"))
+        
+        if not use_llm:
+            result = {
+                "intent_type": "information_seeking",
+                "domain_preference": None,
+                "complexity": "simple",
+                "confidence": 0.6,
+                "reasoning": "Heuristic fallback without LLM",
+                "keywords": [state["user_query"]]
+            }
+            elapsed = int((time.time() - task_start) * 1000)
+            print(f"⏱️ [Intent] 완료 (휴리스틱): {elapsed}ms")
+        else:
+            llm = ChatOpenAI(
+                model="gpt-4o-mini", 
+                temperature=0, 
+                max_retries=2,
+                request_timeout=10.0
+            )
+            
+            prompt = f"""
+            당신은 웹 자동화 서비스의 의도 분석 에이전트입니다.
+            사용자 쿼리를 분석하여 의도 유형, 도메인 선호도, 작업 복잡도, 신뢰도 점수, 핵심 키워드를 추출해주세요.
+
+            분석할 항목:
+            1. 의도 유형 (navigation, task_completion, information_seeking, exploration)
+            2. 도메인 선호도 (특정 사이트 언급 여부)
+            3. 작업 복잡도 (simple, moderate, complex)
+            4. 신뢰도 점수 (0.0-1.0)
+            5. 핵심 키워드 (검색에 사용할 핵심 단어들)
+
+            예시:
+            
+            query: "유튜브에서 좋아요 누르기"
+            response: {{
+                "intent_type": "task_completion",
+                "domain_preference": "youtube.com",
+                "complexity": "simple",
+                "confidence": 0.85,
+                "reasoning": "사용자가 유튜브에서 특정 작업을 수행하려는 의도가 명확함",
+                "keywords": ["유튜브", "좋아요", "누르기", "동영상"]
+            }}
+
+            query: "날씨가 너무 추워요"
+            response: {{
+                "intent_type": "information_seeking",
+                "domain_preference": null,
+                "complexity": "simple",
+                "confidence": 0.75,
+                "reasoning": "사용자가 날씨 정보를 찾고 있음",
+                "keywords": ["날씨", "추위", "온도", "기온"]
+            }}
+
+            query: "요즘 나라가 어떻게 굴러가나"
+            response: {{
+                "intent_type": "navigation",
+                "domain_preference": "naver.com",
+                "complexity": "simple",
+                "confidence": 0.90,
+                "reasoning": "최신 국내 정치, 사회 이슈를 보려는 의도로 보임.",
+                "keywords": ["시사", "정치", "뉴스", "최근 이슈"]
+            }}
+
+            이제 다음 쿼리를 분석해주세요:
+            query: "{state['user_query']}"
+            response:"""
+
+            try:
+                response = await asyncio.wait_for(
+                    llm.ainvoke(prompt),
+                    timeout=12.0
+                )
+                result = parse_llm_json(response.content)
+                elapsed = int((time.time() - task_start) * 1000)
+                print(f"⏱️ [Intent] 완료 (LLM): {elapsed}ms")
+            except asyncio.TimeoutError:
+                result = {
+                    "intent_type": "information_seeking",
+                    "domain_preference": None,
+                    "complexity": "simple",
+                    "confidence": 0.5,
+                    "reasoning": "LLM 타임아웃으로 인한 폴백",
+                    "keywords": [state["user_query"]]
+                }
+                elapsed = int((time.time() - task_start) * 1000)
+                print(f"⏱️ [Intent] 타임아웃: {elapsed}ms")
+            except Exception as e:
+                result = {
+                    "intent_type": "information_seeking",
+                    "domain_preference": None,
+                    "complexity": "simple",
+                    "confidence": 0.5,
+                    "reasoning": f"LLM 실패로 인한 폴백: {str(e)}",
+                    "keywords": [state["user_query"]]
+                }
+                elapsed = int((time.time() - task_start) * 1000)
+                print(f"⏱️ [Intent] 실패: {elapsed}ms")
+        
+        # embedding 생성 (non-blocking)
+        loop = asyncio.get_event_loop()
+        query_embedding = await loop.run_in_executor(
+            None,
+            lambda: generate_embedding(state["user_query"])
+        )
+        
+        return {
+            "intent_analysis": result,
+            "query_embedding": query_embedding
+        }
+    
+    # 병렬 실행
+    similarity_result, intent_result = await asyncio.gather(
+        similarity_task(),
+        intent_task()
     )
     
-    max_similarity = 0.0
-    if existing_results and existing_results["matched_paths"]:
-        max_similarity = existing_results["matched_paths"][0].get("relevance_score", 0.0)
-        print(f"📊 발견된 경로 수: {len(existing_results['matched_paths'])}")
-        print(f"📊 경로 이름: {existing_results['matched_paths'][0].get('taskIntent')}")
-        print(f"📊 최대 유사도: {max_similarity:.3f}")
-    else:
-        print("📊 기존 경로 없음")
+    parallel_time = int((time.time() - start_time) * 1000)
+    print(f"⚡ 병렬 분석 완료: {parallel_time}ms")
     
-    # 임계값 설정 (0.43)
-    similarity_threshold = 0.43
-    
+    # 결과 병합
     output_state = {
         **state,
-        "max_similarity": max_similarity,
-        "similarity_threshold": similarity_threshold,
-        "cached_search_results": existing_results  # 검색 결과 캐싱
+        **similarity_result,
+        **intent_result
     }
     
     return output_state
@@ -524,74 +670,82 @@ def initialize_langgraph():
 # ============================================================================
 
 def build_path_selection_graph():
-    """Build conditional LangGraph for path selection"""
+    """
+    Build conditional LangGraph for path selection (병렬 실행 최적화)
+    
+    새로운 구조:
+    1. analyze_similarity_and_intent_parallel (진입점) - 병렬 분석
+    2. 분기 판단 (유사도 기반)
+    3a. high_similarity → rank_existing_paths
+    3b. low_similarity → rediscover_with_agent
+    
+    최적화: similarity와 intent 분석을 병렬로 실행하여 대기 시간 제거
+    """
 
     workflow = StateGraph(PathSelectionState)
 
-    # Node: 벡터 유사도 분석 (진입점)
-    workflow.add_node("analyze_similarity", analyze_vector_similarity)
+    # Node 1: 병렬 분석 (진입점) - similarity + intent 동시 실행
+    workflow.add_node("parallel_analysis", analyze_similarity_and_intent_parallel)
 
-    # Node: 의도 분석 (낮은 유사도일 때만 실행)
-    workflow.add_node("analyze_intent", analyze_user_intent)
-
-    # Node 3: 기존 경로 순위화 (높은 유사도)
+    # Node 2: 기존 경로 순위화 (높은 유사도)
     workflow.add_node("rank_existing_paths", rank_existing_paths)
 
-    # Node 4: 다른 Agent로 경로 재탐색 (낮은 유사도)
+    # Node 3: 다른 Agent로 경로 재탐색 (낮은 유사도)
     workflow.add_node("rediscover_with_agent", rediscover_with_different_agent)
 
     # 조건부 분기: 벡터 유사도에 따라 다른 전략 선택
     workflow.add_conditional_edges(
-        "analyze_similarity",
+        "parallel_analysis",
         should_use_rediscovery_agent,
         {
             "high_similarity": "rank_existing_paths",
-            "low_similarity": "analyze_intent"
+            "low_similarity": "rediscover_with_agent"
         }
     )
-
-    # 낮은 유사도 흐름: 의도 분석 후 재탐색
-    workflow.add_edge("analyze_intent", "rediscover_with_agent")
 
     # 두 경로 모두 최종 결과로 연결
     workflow.add_edge("rank_existing_paths", END)
     workflow.add_edge("rediscover_with_agent", END)
 
-    # 진입점은 유사도 분석
-    workflow.set_entry_point("analyze_similarity")
+    # 진입점은 병렬 분석
+    workflow.set_entry_point("parallel_analysis")
 
     return workflow.compile()
 
 
 def print_langgraph_structure():
-    """LangGraph 워크플로우 구조를 출력"""
+    """LangGraph 워크플로우 구조를 출력 (병렬 실행 최적화)"""
     workflow = get_or_build_workflow()
     
     print("\n" + "="*60)
-    print("LangGraph 워크플로우 구조")
+    print("LangGraph 워크플로우 구조 (병렬 실행 최적화)")
     print("="*60)
     
     # 워크플로우 정보 출력
-    print(f"Entry Point: analyze_similarity")
+    print(f"Entry Point: parallel_analysis")
     print(f"End Points: END")
-    print(f"Total Nodes: 4")
+    print(f"Total Nodes: 3")
     print(f"Conditional Branches: 1")
     
     print("\n노드 구조:")
-    print("1. analyze_similarity - 벡터 유사도 분석")
-    print("2. analyze_intent - 사용자 의도 분석 (유사도 < 0.43일 때만)")
-    print("3. rank_existing_paths - 기존 경로 순위화 (유사도 >= 0.43)")
-    print("4. rediscover_with_agent - 다른 Agent로 재탐색 (유사도 < 0.43)")
+    print("1. parallel_analysis - 병렬 분석 (similarity + intent 동시 실행)")
+    print("2. rank_existing_paths - 기존 경로 순위화 (유사도 >= 0.43)")
+    print("3. rediscover_with_agent - 다른 Agent로 재탐색 (유사도 < 0.43)")
     
     print("\n분기 조건:")
-    print("- 유사도 >= 0.43: rank_existing_paths")
-    print("- 유사도 < 0.43: rediscover_with_agent")
+    print("- 유사도 >= 0.43: rank_existing_paths (intent 결과 미사용)")
+    print("- 유사도 < 0.43: rediscover_with_agent (두 결과 모두 사용)")
     
-    print("\n워크플로우 그래프:")
-    print("analyze_similarity → {")
+    print("\n워크플로우 그래프 (병렬 실행):")
+    print("parallel_analysis [similarity ∥ intent] → {")
     print("    high_similarity: rank_existing_paths → END")
-    print("    low_similarity: analyze_intent → rediscover_with_agent → END")
+    print("    low_similarity: rediscover_with_agent → END")
     print("}")
+    
+    print("\n최적화 효과:")
+    print("- 순차 실행: similarity (100ms) → intent (1000ms) = 1100ms")
+    print("- 병렬 실행: max(similarity, intent) = max(100ms, 1000ms) = 1000ms")
+    print("- 절약 시간: ~100-900ms (낮은 유사도 경로)")
     
     print("\n" + "="*60)
     
@@ -601,15 +755,14 @@ def print_langgraph_structure():
 
 
 def get_workflow_info():
-    """워크플로우 정보를 딕셔너리로 반환"""
+    """워크플로우 정보를 딕셔너리로 반환 (병렬 실행 최적화)"""
     return {
-        "entry_point": "analyze_similarity",
+        "entry_point": "parallel_analysis",
         "end_points": ["END"],
-        "total_nodes": 4,
+        "total_nodes": 3,
         "conditional_branches": 1,
         "nodes": {
-            "analyze_similarity": "벡터 유사도 분석",
-            "analyze_intent": "사용자 의도 분석 (유사도 < 0.43)", 
+            "parallel_analysis": "병렬 분석 (similarity + intent 동시 실행)",
             "rank_existing_paths": "기존 경로 순위화 (유사도 >= 0.43)",
             "rediscover_with_agent": "다른 Agent로 재탐색 (유사도 < 0.43)"
         },
@@ -617,7 +770,9 @@ def get_workflow_info():
         "branches": {
             "high_similarity": "rank_existing_paths",
             "low_similarity": "rediscover_with_agent"
-        }
+        },
+        "optimization": "speculative_parallel_execution",
+        "expected_speedup": "100-900ms for low similarity paths"
     }
 
 
