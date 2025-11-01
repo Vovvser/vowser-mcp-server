@@ -1,5 +1,217 @@
 # Vowser Agent Server
 
+**LangGraph-based Agent Server for Web Navigation Path Recommendation**
+
+## Overview
+
+Vowser Agent Server is an intelligent server that recommends optimal web navigation paths using natural language queries. It leverages Neo4j graph database and LangGraph workflows to provide path analysis and search functionality for web automation.
+
+### Key Features
+
+- **Natural Language Search**: Search web paths using natural language like "Check weather on Naver"
+- **Intelligent Recommendations**: LangGraph-based parallel analysis for optimal path suggestions
+- **Real-time Communication**: Bi-directional real-time data exchange via WebSocket
+
+## System Architecture
+
+### LangGraph Workflow Structure
+
+```mermaid
+graph TB
+    Start([User Query]) --> Similarity[Neo4j Embedding Vector<br/>Cosine Similarity Analysis<br/>text-embedding-3-small]
+    
+    Similarity --> Decision{Similarity >= 0.43?}
+    
+    Decision -->|True| RankPaths[Top K Path Ranking or<br/>Use Cached Results]
+    Decision -->|False| Intent[Intent Analysis & Keyword Extraction<br/>GPT-4o-mini]
+    
+    Intent --> Rediscover[Keyword-based Rediscovery<br/>Parallel Search]
+    
+    RankPaths --> End([Return Results])
+    Rediscover --> End
+    
+    classDef orange fill:#F5A623,stroke:#C17D11,stroke-width:2px,color:#000,font-weight:bold
+    classDef green fill:#6CB51C,stroke:#5FA319,stroke-width:2px,color:#000,font-weight:bold
+    classDef skyblue fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    class Start,End skyblue
+    class Decision orange
+    class Similarity,RankPaths,RankPaths,Intent,Rediscover green
+```
+
+### Key Optimizations
+
+1. **Conditional Branching**: Skip unnecessary LLM calls based on similarity (intent analysis skipped for high similarity)
+2. **Result Caching**: Prevent duplicate Neo4j queries for performance improvement
+3. **Embedding Caching**: Skip OpenAI API calls for repeated queries
+4. **Keyword Parallel Search**: Parallel keyword-based search after intent analysis for low similarity
+
+**Performance Improvement**: High similarity paths return immediately without LLM calls, low similarity paths reduce processing time with parallel keyword search
+
+## Quick Start
+
+### 1. Conda Environment Setup
+
+```bash
+# Option 1: Create Conda environment from yaml file
+conda env create -f environment.yml
+conda activate env
+
+# Option 2: Create Conda environment and install pip dependencies
+conda create -n env python=3.11
+conda activate env
+pip install -r requirements.txt
+```
+
+### 2. Environment Variables
+
+Create a `.env` file and fill in the values:
+
+```env
+# API Keys
+OPENAI_API_KEY=
+GOOGLE_API_KEY=
+
+# Neo4j Configuration - AuraDB
+# Wait 60 seconds before connecting using these details,
+# or login to https://console.neo4j.io to validate the Aura Instance is available
+NEO4J_URI=
+NEO4J_USERNAME=
+NEO4J_PASSWORD=
+
+NEO4J_DATABASE=
+AURA_INSTANCEID=
+AURA_INSTANCENAME=
+```
+
+### 3. Run FastAPI Server
+
+```bash
+uvicorn app.main:app --port 8000 --reload
+```
+
+### Main Message Types
+
+#### 1. Save Path
+
+```json
+{
+  "type": "save_new_path",
+  "data": {
+    "sessionId": "session-123",
+    "taskIntent": "Find music on YouTube",
+    "domain": "youtube.com",
+    "steps": [...]
+  }
+}
+```
+
+#### 2. Search Path (LangGraph)
+
+```json
+{
+  "type": "search_new_path",
+  "data": {
+    "query": "Like videos on YouTube",
+    "limit": 3,
+    "domain_hint": null
+  }
+}
+```
+
+#### 3. Find Popular Paths
+
+```json
+{
+  "type": "find_popular_paths",
+  "data": {
+    "domain": "naver.com",
+    "limit": 10
+  }
+}
+```
+
+## Project Structure
+
+```
+vowser-mcp-server/
+├── app/
+│   ├── main.py                      # FastAPI WebSocket Server
+│   ├── models/                      # Pydantic Data Models
+│   │   ├── step.py                  # STEP Node Model
+│   │   └── root.py                  # ROOT Node Model
+│   └── services/
+│       ├── langgraph_service.py     # LangGraph Workflow (Parallel Execution)
+│       ├── neo4j_service.py         # Neo4j Graph DB Service
+│       ├── embedding_service.py     # OpenAI Embeddings (with Caching)
+│       └── db_setup.py              # Vector Index Setup
+├── test/
+│   └── test_single.py               # WebSocket Integration Tests
+├── docs/                            # Technical Documentation
+└── requirements.txt                 # Python Dependencies
+```
+
+## Neo4j Graph Structure
+
+```mermaid
+graph LR
+    ROOT["ROOT: Domain<br/>naver.com"]
+    STEP1["STEP: First Step<br/>Click/Input"]
+    STEP2["STEP: Second Step<br/>Click/Input"]
+    STEP3["STEP: Last Step<br/>Click/Input"]
+    
+    ROOT -->|HAS_STEP<br/>Naver Today Weather| STEP1
+    STEP1 -->|NEXT_STEP<br/>1| STEP2
+    STEP2 -->|NEXT_STEP<br/>2| STEP3
+    
+    classDef orange fill:#F5A623,stroke:#C17D11,stroke-width:2px,color:#000,font-weight:bold
+    classDef green fill:#6CB51C,stroke:#5FA319,stroke-width:2px,color:#000,font-weight:bold
+    classDef skyblue fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    
+    class ROOT skyblue
+    class STEP1,STEP2,STEP3 green
+```
+
+### Node Types
+
+- **ROOT**: Domain information (naver.com, google.com, etc.)
+- **STEP**: Web page interaction steps (click, input, etc.)
+
+### Relationship Types
+
+- **HAS_STEP**: ROOT → First STEP (includes taskIntent, intentEmbedding)
+- **NEXT_STEP**: STEP → STEP (sequential connection, tracks sequenceOrder)
+
+## Tech Stack
+
+- **FastAPI**: Asynchronous web framework
+- **LangGraph**: AI workflow orchestration
+- **Neo4j**: Graph database (with vector index)
+- **OpenAI API**: GPT-4o-mini (Intent Analysis Agent), text-embedding-3-small (Embeddings)
+- **LangChain**: AI integration framework
+
+## LangGraph Performance Improvements
+
+Performance improvements through workflow restructuring and caching after LangGraph implementation
+
+| Path Type | Before | Optimized | Improvement |
+|-----------|--------|-----------|-------------|
+| High Similarity (>=0.43) | 7,000ms | 4,000ms | **~43%** |
+| Low Similarity (<0.43) | 19,000ms | 6,000ms | **~68%** |
+| Repeated Queries (Embedding Cache) | 4,000ms | 2,500ms | **~37.5%** |
+
+## License
+
+Apache License 2.0 - See [LICENSE](LICENSE) file for details
+
+## Related Projects
+
+- **vowser-backend**: Kotlin/Spring Boot API Gateway
+- **vowser-client**: Kotlin Multiplatform Client Application
+
+<br/>
+
+# Vowser Agent Server
+
 **사용자 의도에 맞는 웹 탐색 경로를 반환하는 LangGraph 기반 Agent 서버**
 
 ## 프로젝트 소개
@@ -56,7 +268,7 @@ graph TB
 conda env create -f environment.yml
 conda activate env
 
-# 두번쨰 방법: Conda 가상환경 만들고 pip 의존성으로 설치치
+# 두번쨰 방법: Conda 가상환경 만들고 pip 의존성으로 설치
 conda create -n env python=3.11
 conda activate env
 pip install -r requirements.txt
@@ -113,7 +325,7 @@ uvicorn app.main:app --port 8000 --reload
   "data": {
     "query": "유튜브에서 좋아요 누르기",
     "limit": 3,
-    "domain_hint": None
+    "domain_hint": null
   }
 }
 ```
@@ -142,7 +354,7 @@ vowser-mcp-server/
 │   └── services/
 │       ├── langgraph_service.py     # LangGraph 워크플로우 (병렬 실행)
 │       ├── neo4j_service.py         # Neo4j 그래프 DB 서비스
-│       ├── embedding_service.py     # OpenAI 임베딩 (캐싱 포함함)
+│       ├── embedding_service.py     # OpenAI 임베딩 (캐싱 포함)
 │       └── db_setup.py              # 벡터 인덱스 설정
 ├── test/
 │   └── test_single.py               # WebSocket 통합 테스트
@@ -188,7 +400,6 @@ graph LR
 - **Neo4j**: 그래프 데이터베이스 (벡터 인덱스)
 - **OpenAI API**: GPT-4o-mini (의도 분석 Agent), text-embedding-3-small (임베딩)
 - **LangChain**: AI 통합 프레임워크
-- **LangGraph**: Agent 워크플로우 구성
 
 ## LangGraph 성능 개선
 
