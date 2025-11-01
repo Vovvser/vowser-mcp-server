@@ -87,10 +87,10 @@ def save_path_to_neo4j(path_submission: PathSubmission):
             r.displayName = $displayName,
             r.embedding = $embedding,
             r.visitCount = 0,
-            r.lastVisited = datetime()
+            r.lastVisited = datetime({timezone: 'Asia/Seoul'})
         ON MATCH SET
             r.visitCount = r.visitCount + 1,
-            r.lastVisited = datetime()
+            r.lastVisited = datetime({timezone: 'Asia/Seoul'})
         RETURN r
         """
 
@@ -136,8 +136,8 @@ def save_path_to_neo4j(path_submission: PathSubmission):
                 s.textLabels = $textLabels,
                 s.contextText = $contextText,
                 s.embedding = $embedding,
-                s.createdAt = coalesce(s.createdAt, datetime()),
-                s.lastUsed = datetime(),
+                s.createdAt = coalesce(s.createdAt, datetime({timezone: 'Asia/Seoul'})),
+                s.lastUsed = datetime({timezone: 'Asia/Seoul'}),
                 s.usageCount = coalesce(s.usageCount, 0) + 1,
                 s.successRate = $successRate
             RETURN s
@@ -176,11 +176,11 @@ def save_path_to_neo4j(path_submission: PathSubmission):
                     rel.weight = 1,
                     rel.order = $order,
                     rel.intentEmbedding = $intentEmbedding,
-                    rel.createdAt = datetime(),
-                    rel.lastUpdated = datetime()
+                    rel.createdAt = datetime({timezone: 'Asia/Seoul'}),
+                    rel.lastUpdated = datetime({timezone: 'Asia/Seoul'})
                 ON MATCH SET
                     rel.weight = rel.weight + 1,
-                    rel.lastUpdated = datetime()
+                    rel.lastUpdated = datetime({timezone: 'Asia/Seoul'})
                 """
 
                 graph.query(create_root_step_rel, {
@@ -202,8 +202,8 @@ def save_path_to_neo4j(path_submission: PathSubmission):
                 SET r.weight = coalesce(r.weight, 0) + 1,
                     r.sequenceOrder = $sequenceOrder,
                     r.pathId = $pathId,
-                    r.createdAt = coalesce(r.createdAt, datetime()),
-                    r.lastUpdated = datetime()
+                    r.createdAt = coalesce(r.createdAt, datetime({timezone: 'Asia/Seoul'})),
+                    r.lastUpdated = datetime({timezone: 'Asia/Seoul'})
                 """
 
                 graph.query(create_next_step_rel, {
@@ -636,7 +636,7 @@ def cleanup_old_paths(days: int = 30):
     try:
         query = """
         MATCH ()-[ns:NEXT_STEP]->()
-        WHERE duration.between(ns.lastUpdated, datetime()).days > $days
+        WHERE duration.between(ns.lastUpdated, datetime({timezone: 'Asia/Seoul'})).days > $days
         WITH ns, count(*) as oldCount
         DELETE ns
         RETURN oldCount
