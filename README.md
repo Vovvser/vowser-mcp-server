@@ -18,12 +18,12 @@ Vowser Agent Server는 자연어 질의로 최적의 경로를 추천하는 지�
 
 ```mermaid
 graph TB
-    Start([사용자 쿼리]) --> Similarity[Neo4j 벡터 코사인 유사도 분석<br/>text-embedding-3-small]
+    Start([사용자 쿼리]) --> Similarity[Neo4j 임베딩 벡터<br/>코사인 유사도 분석<br/>text-embedding-3-small]
     
     Similarity --> Decision{유사도 >= 0.43?}
     
-    Decision -->|True| RankPaths[기존 경로 순위화<br/>캐시된 결과 사용]
-    Decision -->|False| Intent[의도 분석<br/>GPT-4o-mini]
+    Decision -->|True| RankPaths[웹 경로 Top K 순위화 or<br/>캐시된 결과 사용]
+    Decision -->|False| Intent[의도 분석 및 키워드 추출<br/>GPT-4o-mini]
     
     Intent --> Rediscover[키워드 기반 재탐색<br/>병렬 검색]
     
