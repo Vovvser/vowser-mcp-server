@@ -39,7 +39,7 @@ async def increment_has_step_weight(search_result: dict):
             """
             MATCH (r:ROOT {domain: $domain})-[rel:HAS_STEP {taskIntent: $taskIntent}]->(:STEP)
             SET rel.weight = coalesce(rel.weight, 0) + 1,
-                rel.lastUpdated = datetime()
+                rel.lastUpdated = datetime({timezone: 'Asia/Seoul'})
             RETURN rel.weight as newWeight
             """,
             {"domain": domain, "taskIntent": task_intent}
