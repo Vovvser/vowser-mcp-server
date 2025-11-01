@@ -1,349 +1,211 @@
-# Vowser MCP Server
+# Vowser Agent Server
 
-FastAPI-based WebSocket server that serves as an MCP (Model Context Protocol) server for web crawling and path analysis. The server integrates with Neo4j for graph-based storage of web navigation paths and uses LangChain for AI-powered content analysis.
+**사용자 의도에 맞는 웹 탐색 경로를 반환하는 LangGraph 기반 Agent 서버**
 
-## Features
+## 프로젝트 소개
 
-- **WebSocket Communication**: Real-time bidirectional communication via WebSocket
-- **Neo4j Graph Database**: Stores web navigation paths as graph structures
-- **AI-Powered Analysis**: LangChain integration for semantic content analysis
-- **Path Search**: Natural language search for navigation paths using vector embeddings
-- **Popular Path Tracking**: Usage-based path recommendations with weighted relationships
+Vowser Agent Server는 사용자의 웹 탐색 패턴을 학습하고, 자연어 질의로 최적의 경로를 추천하는 지능형 서버입니다. Neo4j 그래프 데이터베이스와 LangGraph 워크플로우를 활용하여 웹 자동화를 위한 경로 분석 및 검색 기능을 제공합니다.
 
-## Quick Start
+### 핵심 가치
 
-### Environment Setup
+- **자연어 검색**: "유튜브에서 좋아요 누르기"와 같은 자연어로 경로 검색
+- **지능형 추천**: LangGraph 기반 병렬 분석으로 사용자 의도에 맞는 최적의 경로 추천
+- **실시간 통신**: WebSocket 기반 양방향 실시간 데이터 교환
+
+## 시스템 아키텍처
+
+### LangGraph 워크플로우 구조
+
+```mermaid
+graph TB
+    Start([사용자 쿼리]) --> Parallel[병렬 분석 노드]
+    
+    subgraph Parallel["병렬 실행 (Speculative Execution)"]
+        direction LR
+        Similarity[벡터 유사도 분석<br/>Neo4j Vector Search]
+        Intent[의도 분석<br/>GPT-4o-mini]
+        Embed[임베딩 생성<br/>text-embedding-3-small]
+        
+        Intent --> Embed
+    end
+    
+    Parallel --> Decision{유사도 >= 0.43?}
+    
+    Decision -->|높음| RankPaths[기존 경로 순위화<br/>캐시된 결과 사용]
+    Decision -->|낮음| Rediscover[키워드 기반 재탐색<br/>병렬 검색]
+    
+    RankPaths --> End([검색 결과 반환])
+    Rediscover --> End
+    
+    style Parallel fill:#e1f5ff
+    style Decision fill:#fff3cd
+    style End fill:#d4edda
+```
+
+### 주요 최적화
+
+1. **병렬 실행**: similarity 분석과 intent 분석을 동시에 수행하여 대기 시간 제거
+2. **Speculative Execution**: 높은 유사도일 때 intent 결과를 버려 오버헤드 최소화
+3. **결과 캐싱**: 중복 Neo4j 쿼리 방지로 성능 향상
+4. **Non-blocking I/O**: 모든 I/O 작업을 비동기로 처리
+
+**성능 개선**: 낮은 유사도 경로에서 500-1000ms 절약 (약 40-60% 향상)
+
+## 빠른 시작
+
+### 1. Conda 환경 설정
 
 ```bash
-# Install dependencies (recommended)
-uv sync
+# 첫번째 방법: yaml 파일로 Conda 환경 생성
+conda env create -f environment.yml
+conda activate env
 
-# Alternative: pip install
+# 두번쨰 방법: Conda 가상환경 만들고 pip 의존성으로 설치치
+conda create -n env python=3.11
+conda activate env
 pip install -r requirements.txt
 ```
 
-### Configuration
+### 2. 환경 변수 설정
 
-Create a `.env` file:
+`.env` 파일을 생성하고 다음 내용 입력하고 채워넣기:
 
 ```env
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your_password
-GOOGLE_API_KEY=your_gemini_api_key
-OPENAI_API_KEY=your_openai_key
+# Neo4j 설정
+OPENAI_API_KEY=
+GOOGLE_API_KEY=
+
+# Neo4j 설정 - AuraDB
+# Wait 60 seconds before connecting using these details,
+# or login to https://console.neo4j.io to validate the Aura Instance is available
+NEO4J_URI=
+NEO4J_USERNAME=
+NEO4J_PASSWORD=
+
+NEO4J_DATABASE=
+AURA_INSTANCEID=
+AURA_INSTANCENAME=
 ```
 
-### Running the Server
+### 3. FastAPI 서버 실행
 
 ```bash
-# Start the FastAPI server
 uvicorn app.main:app --port 8000 --reload
-
-# Alternative: using Python module
-python -m uvicorn app.main:app --port 8000 --reload
 ```
 
-### Testing
+### 주요 메시지 타입
 
-```bash
-# Run comprehensive WebSocket tests
-cd test/
-python test_single.py
-
-# Expected output: "전체 결과: 5/5 성공"
-```
-
-## API Documentation
-
-### WebSocket Connection
-
-- **URL**: `ws://localhost:8000/ws`
-- **Protocol**: JSON-based message exchange
-
-### Supported Message Types
-
-#### 1. Save Navigation Path
+#### 1. 경로 저장
 
 ```json
 {
-  "type": "save_path",
+  "type": "save_new_path",
   "data": {
     "sessionId": "session-123",
-    "startCommand": "유튜브에서 음악 찾기",
-    "completePath": [...]
+    "taskIntent": "유튜브에서 음악 찾기",
+    "domain": "youtube.com",
+    "steps": [...]
   }
 }
 ```
 
-#### 2. Search Paths
+#### 2. 경로 검색 (LangGraph)
 
 ```json
 {
-  "type": "search_path",
+  "type": "search_new_path",
   "data": {
-    "query": "유튜브에서 좋아요 한 음악 재생목록 여는 방법",
+    "query": "유튜브에서 좋아요 누르기",
     "limit": 3,
-    "domain_hint": "youtube.com"
+    "domain_hint": None
   }
 }
 ```
 
-#### 3. Check Graph Structure
-
-```json
-{
-  "type": "check_graph",
-  "data": {}
-}
-```
-
-#### 4. Find Popular Paths
+#### 3. 인기 경로 조회
 
 ```json
 {
   "type": "find_popular_paths",
   "data": {
-    "domain": "youtube.com",
+    "domain": "naver.com",
     "limit": 10
   }
 }
 ```
 
-#### 5. Visualize Paths
-
-```json
-{
-  "type": "visualize_paths",
-  "data": {
-    "domain": "youtube.com"
-  }
-}
-```
-
-## Architecture
-
-```
-[vowser-client] <=> [vowser-backend] <=> [vowser-mcp-server]
-```
-
-The MCP server serves as the "brain" of the system, handling:
-
-- Web navigation path storage and analysis
-- AI-powered semantic search
-- Graph-based path recommendations
-- Usage pattern analysis
-
-### Core Components
-
-- **FastAPI WebSocket Server** (`app/main.py`): Single `/ws` endpoint for real-time communication
-- **Neo4j Graph Database** (`app/services/neo4j_service.py`): Graph structures for navigation paths
-- **AI Services** (`app/services/`): LangChain integration for content analysis and embeddings
-- **Data Models** (`app/models/path.py`): Pydantic models for data validation
-
-### Graph Schema
-
-- **ROOT**: Domain-level nodes (e.g., youtube.com)
-- **PAGE**: Interactive elements with selectors and embeddings
-- **PATH**: Complete navigation sequences with semantic search capability
-- **Relationships**: HAS_PAGE, NAVIGATES_TO, NAVIGATES_TO_CROSS_DOMAIN, CONTAINS
-
-## Development
-
-### Project Structure
+## 프로젝트 구조
 
 ```
 vowser-mcp-server/
-├── app/                    # Main application
-│   ├── main.py            # FastAPI WebSocket server
-│   ├── models/            # Pydantic models
-│   └── services/          # Business logic
-├── docs/                  # Documentation
-├── test/                  # Test files
-└── requirements.txt       # Dependencies
+├── app/
+│   ├── main.py                      # FastAPI WebSocket 서버
+│   ├── models/                      # Pydantic 데이터 모델
+│   │   ├── step.py                  # STEP 노드 모델
+│   │   └── root.py                  # ROOT 노드 모델
+│   └── services/
+│       ├── langgraph_service.py     # LangGraph 워크플로우 (병렬 실행)
+│       ├── neo4j_service.py         # Neo4j 그래프 DB 서비스
+│       ├── embedding_service.py     # OpenAI 임베딩 (캐싱 포함함)
+│       └── db_setup.py              # 벡터 인덱스 설정
+├── test/
+│   └── test_single.py               # WebSocket 통합 테스트
+├── docs/                            # 기술 문서
+└── requirements.txt                 # Python 의존성
 ```
 
-### Testing Strategy
+## Neo4j 그래프 구조
 
-- `test_single.py`: Comprehensive WebSocket message testing
-- All tests should pass with "5/5 성공" result
-- Integration tests for Neo4j functionality
-
-## License
-
-This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Related Projects
-
-- **vowser-backend**: Kotlin/Spring Boot central API gateway
-- **vowser-client**: Kotlin Multiplatform user-facing application
-
-For more detailed information, see [CLAUDE.md](CLAUDE.md).
-
-## To-do List (임시)
-
-### 🚀 시니어 AI 엔지니어 관점에서의 개발 로드맵
-
-#### 📊 현재 프로젝트 상태 분석
-
-**현재 아키텍처:**
-
-- **FastAPI WebSocket 서버**: 8개 메시지 타입 지원하는 기본 API
-- **Neo4j 그래프 DB**: 웹 탐색 경로를 그래프로 저장
-- **LangChain 통합**: OpenAI/Gemini 모델로 임베딩 및 콘텐츠 분석
-- **기본 MCP 구현**: 웹 크롤링과 경로 분석 기능
-
-**기술적 한계:**
-
-- LangGraph 미연결 (단일 LLM 호출만 가능)
-- 복잡한 워크플로우 오케스트레이션 부재
-- 에이전트 간 협업 메커니즘 없음
-- 상태 관리 및 지속성 부족
-
-#### 🎯 LangGraph 통합 전략
-
-##### Phase 1: Core LangGraph Integration (2-3주)
-
-**1.1 의존성 추가 및 기본 설정**
-
-- `pyproject.toml`에 LangGraph 추가: `langgraph>=0.2.74`
-- LangGraph 체크포인터 설정 (Neo4j 기반)
-- 기본 상태 관리 구조 구축
-
-**1.2 Multi-Agent 아키텍처 설계**
-
-```python
-# 예상 에이전트 구조
-- WebCrawlerAgent: 웹 페이지 분석 전담
-- PathAnalysisAgent: 네비게이션 경로 최적화
-- UserInterfaceAgent: 사용자 인터랙션 처리
-- KnowledgeGraphAgent: Neo4j 데이터 관리
+```mermaid
+graph LR
+    ROOT["ROOT: 도메인<br/>youtube.com<br/>naver.com"]
+    STEP1["STEP: 첫 번째 단계<br/>클릭/입력/스크롤"]
+    STEP2["STEP: 두 번째 단계<br/>클릭/입력/스크롤"]
+    STEP3["STEP: 마지막 단계<br/>클릭/입력/스크롤"]
+    
+    ROOT -->|"HAS_STEP<br/>{taskIntent<br/>intentEmbedding}"| STEP1
+    STEP1 -->|"NEXT_STEP<br/>{weight<br/>sequenceOrder}"| STEP2
+    STEP2 -->|"NEXT_STEP<br/>{weight<br/>sequenceOrder}"| STEP3
+    
+    style ROOT fill:#e1f5ff
+    style STEP1 fill:#fff3cd
+    style STEP2 fill:#fff3cd
+    style STEP3 fill:#d4edda
 ```
 
-**1.3 워크플로우 오케스트레이션**
+### 노드 타입
 
-- 각 WebSocket 메시지 타입을 LangGraph 워크플로우로 변환
-- 병렬 처리가 가능한 작업들 식별 및 구현
+- **ROOT**: 도메인 정보 (youtube.com, naver.com 등)
+- **STEP**: 웹 페이지의 인터랙션 단계 (클릭, 입력 등)
 
-##### Phase 2: Advanced Workflow Implementation (3-4주)
+### 관계 타입
 
-**2.1 Smart Path Discovery Workflow**
+- **HAS_STEP**: ROOT → 첫 STEP (taskIntent, intentEmbedding 포함)
+- **NEXT_STEP**: STEP → STEP (순차 연결, sequenceOrder 추적)
 
-```python
-@entrypoint()
-def smart_path_discovery(query, domain_hint):
-    # 1. 자연어 쿼리 분석
-    query_analysis = analyze_user_intent(query).result()
+## 기술 스택
 
-    # 2. 병렬로 실행
-    semantic_search = search_semantic_paths(query_analysis)
-    graph_traversal = find_graph_patterns(query_analysis)
+- **FastAPI**: 비동기 웹 프레임워크
+- **LangGraph**: AI 워크플로우 오케스트레이션
+- **Neo4j**: 그래프 데이터베이스 (벡터 인덱스)
+- **OpenAI API**: GPT-4o-mini (의도 분석), text-embedding-3-small (임베딩)
+- **LangChain**: AI 통합 프레임워크
 
-    # 3. 결과 통합 및 랭킹
-    return rank_and_merge_results(
-        semantic_search.result(),
-        graph_traversal.result()
-    ).result()
-```
+## LangGraph 성능 개선
 
-**2.2 Adaptive Web Analysis Workflow**
+LangGraph 적용 후 플로우 구조 변경과 캐싱으로로 오버 헤드 개선
 
-```python
-@task
-def analyze_page_structure(url):
-    # AI 기반 페이지 구조 분석
+| 경로 유형 | 기존 | 최적화 | 개선율 |
+|---------|------|--------|--------|
+| 높은 유사도 (>=0.43) | 7,000ms | 4,000ms | **약 43%** |
+| 낮은 유사도 (<0.43) | 19,000ms | 6,000ms | **약 68%** |
+| 반복 쿼리 (임베딩 캐시) | 4,000ms | 2,500ms | **약 60%** |
 
-@task
-def extract_interactive_elements(html_content):
-    # 상호작용 가능 요소 추출
+## 라이선스
 
-@task
-def generate_navigation_graph(page_data):
-    # Neo4j 그래프 생성
-```
+Apache License 2.0 - 자세한 내용은 [LICENSE](LICENSE) 파일 참조
 
-**2.3 Human-in-the-Loop Integration**
+## 관련 프로젝트
 
-- 사용자 피드백 루프 구현
-- 경로 추천 품질 개선 메커니즘
-
-##### Phase 3: Production-Ready Features (2-3주)
-
-**3.1 Error Recovery & Resilience**
-
-- LangGraph 체크포인터를 활용한 상태 복구
-- 실패한 워크플로우 재시작 메커니즘
-
-**3.2 Performance Optimization**
-
-- 병렬 처리 최적화
-- Neo4j 쿼리 성능 튜닝
-- 캐싱 전략 구현
-
-**3.3 Monitoring & Observability**
-
-- LangSmith 통합으로 에이전트 실행 추적
-- 메트릭 수집 및 대시보드 구축
-
-#### 🛠️ 구체적인 구현 계획
-
-##### 즉시 시작할 작업들:
-
-**1. LangGraph 기본 통합** (`app/services/langgraph_service.py`)
-
-```python
-from langgraph.graph import StateGraph, MessagesState
-from langgraph.prebuilt import create_react_agent
-
-class WebNavigationState(TypedDict):
-    messages: list
-    current_url: str
-    target_action: str
-    discovered_paths: list
-    user_context: dict
-```
-
-**2. 기존 WebSocket 핸들러 리팩토링**
-
-```python
-# app/main.py에서
-elif message['type'] == 'search_path':
-    # 기존: neo4j_service.search_paths_by_query()
-    # 신규: langgraph_workflow.smart_search_workflow()
-```
-
-**3. 새로운 워크플로우 엔드포인트 추가**
-
-- `intelligent_path_discovery`: 멀티 에이전트 협업
-- `adaptive_web_analysis`: 동적 페이지 분석
-- `contextual_navigation`: 사용자 맥락 기반 추천
-
-##### 아키텍처 개선 포인트:
-
-**현재:** 단일 요청-응답 → **목표:** 지속적 대화형 워크플로우  
-**현재:** 정적 경로 매칭 → **목표:** 동적 의도 파악 및 적응  
-**현재:** 단일 LLM 호출 → **목표:** 전문화된 에이전트 협업
-
-#### 📈 예상 성과
-
-**단기 (2개월):**
-
-- 50% 더 정확한 경로 추천
-- 병렬 처리로 30% 응답 시간 단축
-- 복잡한 다단계 탐색 시나리오 지원
-
-**중장기 (6개월):**
-
-- 완전 자율적인 웹 탐색 에이전트
-- 실시간 사용자 의도 학습
-- 크로스 도메인 지능형 경로 발견
-
-이 로드맵을 통해 현재의 MVP를 **엔터프라이즈급 AI 에이전트 플랫폼**으로 발전시킬 수 있습니다.
+- **vowser-backend**: Kotlin/Spring Boot API 게이트웨이
+- **vowser-client**: Kotlin Multiplatform 클라이언트 애플리케이션
