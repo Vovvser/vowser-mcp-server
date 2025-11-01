@@ -13,7 +13,7 @@ Thank you for contributing. Please follow the workflow below.
 - Follow **PEP 8** Python style guide.
 - Use **type hints** for function parameters and return values.
 - Use **async/await** for asynchronous operations.
-- Keep functions focused and modular.
+- Keep functions focused and modular (Single Responsibility Principle).
 
 ### Pull Request Checklist
 - Add or update tests for all affected areas.  
