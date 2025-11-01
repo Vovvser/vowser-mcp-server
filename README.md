@@ -4,12 +4,12 @@
 
 ## 프로젝트 소개
 
-Vowser Agent Server는 사용자의 웹 탐색 패턴을 학습하고, 자연어 질의로 최적의 경로를 추천하는 지능형 서버입니다. Neo4j 그래프 데이터베이스와 LangGraph 워크플로우를 활용하여 웹 자동화를 위한 경로 분석 및 검색 기능을 제공합니다.
+Vowser Agent Server는 자연어 질의로 최적의 경로를 추천하는 지능형 서버입니다. Neo4j 그래프 데이터베이스와 LangGraph 워크플로우를 활용하여 웹 자동화를 위한 경로 분석 및 검색 기능을 제공합니다.
 
-### 핵심 가치
+### 핵심 기능
 
-- **자연어 검색**: "유튜브에서 좋아요 누르기"와 같은 자연어로 경로 검색
-- **지능형 추천**: LangGraph 기반 병렬 분석으로 사용자 의도에 맞는 최적의 경로 추천
+- **자연어 검색**: "네이버에서 날씨 보기"와 같은 자연어로 웹 경로 검색
+- **지능형 추천**: LangGraph 기반 병렬 분석으로 사용자 의도에 맞는 최적의 웹 경로 추천
 - **실시간 통신**: WebSocket 기반 양방향 실시간 데이터 교환
 
 ## 시스템 아키텍처
@@ -18,38 +18,34 @@ Vowser Agent Server는 사용자의 웹 탐색 패턴을 학습하고, 자연어
 
 ```mermaid
 graph TB
-    Start([사용자 쿼리]) --> Parallel[병렬 분석 노드]
+    Start([사용자 쿼리]) --> Similarity[Neo4j 벡터 코사인 유사도 분석<br/>text-embedding-3-small]
     
-    subgraph Parallel["병렬 실행 (Speculative Execution)"]
-        direction LR
-        Similarity[벡터 유사도 분석<br/>Neo4j Vector Search]
-        Intent[의도 분석<br/>GPT-4o-mini]
-        Embed[임베딩 생성<br/>text-embedding-3-small]
-        
-        Intent --> Embed
-    end
+    Similarity --> Decision{유사도 >= 0.43?}
     
-    Parallel --> Decision{유사도 >= 0.43?}
+    Decision -->|True| RankPaths[기존 경로 순위화<br/>캐시된 결과 사용]
+    Decision -->|False| Intent[의도 분석<br/>GPT-4o-mini]
     
-    Decision -->|높음| RankPaths[기존 경로 순위화<br/>캐시된 결과 사용]
-    Decision -->|낮음| Rediscover[키워드 기반 재탐색<br/>병렬 검색]
+    Intent --> Rediscover[키워드 기반 재탐색<br/>병렬 검색]
     
     RankPaths --> End([검색 결과 반환])
     Rediscover --> End
     
-    style Parallel fill:#e1f5ff
-    style Decision fill:#fff3cd
-    style End fill:#d4edda
+    classDef orange fill:#F5A623,stroke:#C17D11,stroke-width:2px,color:#000,font-weight:bold
+    classDef green fill:#6CB51C,stroke:#5FA319,stroke-width:2px,color:#000,font-weight:bold
+    classDef skyblue fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    class Start,End skyblue
+    class Decision orange
+    class Similarity,RankPaths,RankPaths,Intent,Rediscover green
 ```
 
 ### 주요 최적화
 
-1. **병렬 실행**: similarity 분석과 intent 분석을 동시에 수행하여 대기 시간 제거
-2. **Speculative Execution**: 높은 유사도일 때 intent 결과를 버려 오버헤드 최소화
-3. **결과 캐싱**: 중복 Neo4j 쿼리 방지로 성능 향상
-4. **Non-blocking I/O**: 모든 I/O 작업을 비동기로 처리
+1. **조건부 분기**: 유사도에 따라 불필요한 LLM 호출 방지 (높은 유사도 시 의도 분석 생략)
+2. **결과 캐싱**: 중복 Neo4j 쿼리 방지로 성능 향상
+3. **임베딩 캐싱**: 동일 쿼리 반복 시 OpenAI API 호출 skip
+4. **키워드 병렬 검색**: 낮은 유사도 시 의도 분석 후 키워드 기반 검색을 병렬로 수행
 
-**성능 개선**: 낮은 유사도 경로에서 500-1000ms 절약 (약 40-60% 향상)
+**성능 개선**: 높은 유사도 경로는 LLM 호출 없이 즉시 반환, 낮은 유사도는 키워드 병렬 검색으로 처리 시간 단축
 
 ## 빠른 시작
 
@@ -158,24 +154,26 @@ vowser-mcp-server/
 
 ```mermaid
 graph LR
-    ROOT["ROOT: 도메인<br/>youtube.com<br/>naver.com"]
-    STEP1["STEP: 첫 번째 단계<br/>클릭/입력/스크롤"]
-    STEP2["STEP: 두 번째 단계<br/>클릭/입력/스크롤"]
-    STEP3["STEP: 마지막 단계<br/>클릭/입력/스크롤"]
+    ROOT["ROOT: 도메인<br/>naver.com"]
+    STEP1["STEP: 첫 번째 단계<br/>클릭/입력"]
+    STEP2["STEP: 두 번째 단계<br/>클릭/입력"]
+    STEP3["STEP: 마지막 단계<br/>클릭/입력"]
     
-    ROOT -->|"HAS_STEP<br/>{taskIntent<br/>intentEmbedding}"| STEP1
-    STEP1 -->|"NEXT_STEP<br/>{weight<br/>sequenceOrder}"| STEP2
-    STEP2 -->|"NEXT_STEP<br/>{weight<br/>sequenceOrder}"| STEP3
+    ROOT -->|HAS_STEP<br/>네이버 오늘 날씨| STEP1
+    STEP1 -->|NEXT_STEP<br/>1| STEP2
+    STEP2 -->|NEXT_STEP<br/>2| STEP3
     
-    style ROOT fill:#e1f5ff
-    style STEP1 fill:#fff3cd
-    style STEP2 fill:#fff3cd
-    style STEP3 fill:#d4edda
+    classDef orange fill:#F5A623,stroke:#C17D11,stroke-width:2px,color:#000,font-weight:bold
+    classDef green fill:#6CB51C,stroke:#5FA319,stroke-width:2px,color:#000,font-weight:bold
+    classDef skyblue fill:#4A90E2,stroke:#2E5C8A,stroke-width:3px,color:#fff,font-weight:bold
+    
+    class ROOT skyblue
+    class STEP1,STEP2,STEP3 green
 ```
 
 ### 노드 타입
 
-- **ROOT**: 도메인 정보 (youtube.com, naver.com 등)
+- **ROOT**: 도메인 정보 (naver.com, google.com 등)
 - **STEP**: 웹 페이지의 인터랙션 단계 (클릭, 입력 등)
 
 ### 관계 타입
@@ -188,18 +186,19 @@ graph LR
 - **FastAPI**: 비동기 웹 프레임워크
 - **LangGraph**: AI 워크플로우 오케스트레이션
 - **Neo4j**: 그래프 데이터베이스 (벡터 인덱스)
-- **OpenAI API**: GPT-4o-mini (의도 분석), text-embedding-3-small (임베딩)
+- **OpenAI API**: GPT-4o-mini (의도 분석 Agent), text-embedding-3-small (임베딩)
 - **LangChain**: AI 통합 프레임워크
+- **LangGraph**: Agent 워크플로우 구성
 
 ## LangGraph 성능 개선
 
-LangGraph 적용 후 플로우 구조 변경과 캐싱으로로 오버 헤드 개선
+LangGraph 적용 후 플로우 구조 변경과 캐싱으로 오버 헤드 개선
 
 | 경로 유형 | 기존 | 최적화 | 개선율 |
 |---------|------|--------|--------|
 | 높은 유사도 (>=0.43) | 7,000ms | 4,000ms | **약 43%** |
 | 낮은 유사도 (<0.43) | 19,000ms | 6,000ms | **약 68%** |
-| 반복 쿼리 (임베딩 캐시) | 4,000ms | 2,500ms | **약 60%** |
+| 반복 쿼리 (임베딩 캐시) | 4,000ms | 2,500ms | **약 37.5%** |
 
 ## 라이선스
 
